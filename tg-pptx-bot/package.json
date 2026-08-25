@@ -1,0 +1,15 @@
+{
+  "name": "tg-pptx-bot",
+  "version": "2.0.0",
+  "description": "Telegram bot: Gemini AI презентация генераторы",
+  "main": "bot.js",
+  "scripts": {
+    "start": "node bot.js"
+  },
+  "dependencies": {
+    "node-telegram-bot-api": "^0.66.0",
+    "@google/generative-ai": "^0.21.0",
+    "pptxgenjs": "^3.12.0",
+    "dotenv": "^16.4.5"
+  }
+}
