@@ -9,7 +9,6 @@ function detectLanguage(text) {
   return "english";
 }
 
-// ─── Тіл атауы (Gemini промпты үшін) ─────────────────────────────────────────
 function getLanguageName(lang) {
   const names = {
     kazakh: "Kazakh (Қазақша)",
@@ -19,7 +18,31 @@ function getLanguageName(lang) {
   return names[lang] || "English";
 }
 
-// ─── Уақытша файлды қауіпсіз өшіру ──────────────────────────────────────────
+// ─── Координат конвертация: px → PPTX inches ─────────────────────────────────
+// HTML өлшемі: 1333 × 750px
+// PPTX өлшемі: 10 × 5.63 inch
+
+const HTML_W = 1333;
+const HTML_H = 750;
+const PPTX_W = 10;
+const PPTX_H = 5.63;
+
+function pxToInch(px, axis) {
+  if (axis === "x" || axis === "w") return (px / HTML_W) * PPTX_W;
+  if (axis === "y" || axis === "h") return (px / HTML_H) * PPTX_H;
+  return px;
+}
+
+function zoneToInches(zone) {
+  return {
+    x: pxToInch(zone.x, "x"),
+    y: pxToInch(zone.y, "y"),
+    w: pxToInch(zone.w, "w"),
+    h: pxToInch(zone.h, "h"),
+  };
+}
+
+// ─── Файл операциялары ────────────────────────────────────────────────────────
 function safeDelete(filePath) {
   try {
     if (filePath && fs.existsSync(filePath)) {
@@ -30,35 +53,22 @@ function safeDelete(filePath) {
   }
 }
 
+function safeDeleteAll(filePaths) {
+  (filePaths || []).forEach(safeDelete);
+}
+
 // ─── Қате логтау ─────────────────────────────────────────────────────────────
 function logError(context, err) {
   console.error(`[${context}] ❌ ${err.message}`);
 }
 
-// ─── Кездейсоқ элемент таңдау ────────────────────────────────────────────────
+// ─── Кездейсоқ таңдау ─────────────────────────────────────────────────────────
 function randomPick(arr) {
   return arr[Math.floor(Math.random() * arr.length)];
 }
 
-// ─── Кездейсоқ сан (min-max аралығында) ──────────────────────────────────────
 function randomInt(min, max) {
   return Math.floor(Math.random() * (max - min + 1)) + min;
-}
-
-// ─── Hex түсін RGB-ге айналдыру ───────────────────────────────────────────────
-function hexToRgb(hex) {
-  const r = parseInt(hex.slice(0, 2), 16);
-  const g = parseInt(hex.slice(2, 4), 16);
-  const b = parseInt(hex.slice(4, 6), 16);
-  return { r, g, b };
-}
-
-// ─── Түсті ашықтандыру/қарайту ───────────────────────────────────────────────
-function adjustColor(hex, amount) {
-  const { r, g, b } = hexToRgb(hex);
-  const clamp = (v) => Math.min(255, Math.max(0, v));
-  const toHex = (v) => clamp(v + amount).toString(16).padStart(2, "0");
-  return `${toHex(r)}${toHex(g)}${toHex(b)}`;
 }
 
 // ─── Слайд санын тексеру ──────────────────────────────────────────────────────
@@ -66,14 +76,25 @@ function clampSlideCount(n) {
   return Math.min(Math.max(parseInt(n) || 8, 5), 20);
 }
 
+// ─── Уақыт форматы ────────────────────────────────────────────────────────────
+function formatDate() {
+  return new Date().toLocaleDateString("kk-KZ");
+}
+
 module.exports = {
   detectLanguage,
   getLanguageName,
+  pxToInch,
+  zoneToInches,
   safeDelete,
+  safeDeleteAll,
   logError,
   randomPick,
   randomInt,
-  hexToRgb,
-  adjustColor,
   clampSlideCount,
+  formatDate,
+  HTML_W,
+  HTML_H,
+  PPTX_W,
+  PPTX_H,
 };

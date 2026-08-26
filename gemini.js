@@ -1,142 +1,154 @@
 const { GoogleGenerativeAI } = require("@google/generative-ai");
-const { LAYOUTS, COLOR_PALETTES } = require("./layouts");
-const { getLanguageName, logError } = require("./utils");
+const { getLanguageName, logError, clampSlideCount } = require("./utils");
 
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
 
-// ─── Қолжетімді макеттер тізімі (промпт үшін) ────────────────────────────────
-const TITLE_LAYOUTS = LAYOUTS.title_layouts.join(", ");
-const CONTENT_LAYOUTS = LAYOUTS.content_layouts.join(", ");
-const END_LAYOUTS = LAYOUTS.end_layouts.join(", ");
-const PALETTE_NAMES = COLOR_PALETTES.map((p) => p.name).join(", ");
-
-// ─── Негізгі контент + композиция генерациясы ────────────────────────────────
-async function generatePresentation(topic, slideCount, lang) {
-  const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
-  const langName = getLanguageName(lang);
+// ─── 1-ҚАДАМ: Еркін хабарламаны парсинг ──────────────────────────────────────
+async function parseUserMessage(message) {
+  const model = genAI.getGenerativeModel({ model: "gemini-3.6-flash" });
 
   const prompt = `
-You are a world-class presentation designer AND content writer.
-Topic: "${topic}"
-Language: ${langName} — write ALL text content in this language ONLY.
-Total slides: ${slideCount}
+You are a presentation request parser.
+User message: "${message}"
 
-Your job: create a UNIQUE, VISUALLY STUNNING presentation plan.
-Every presentation must feel different — vary layouts, compositions, and visual approaches.
-
-AVAILABLE TITLE LAYOUTS: ${TITLE_LAYOUTS}
-AVAILABLE CONTENT LAYOUTS: ${CONTENT_LAYOUTS}
-AVAILABLE END LAYOUTS: ${END_LAYOUTS}
-AVAILABLE COLOR PALETTES: ${PALETTE_NAMES}
-
-RULES:
-1. Choose ONE color palette that fits the topic's mood
-2. First slide: type "title", choose from title_layouts
-3. Last slide: type "end", choose from end_layouts
-4. Middle slides: type "content", MIX different layouts — never repeat same layout twice in a row
-5. For slides with hasImage=true layouts, write a vivid English image_prompt (50-80 words, cinematic, detailed)
-6. Content bullets: 3-5 points, concise, impactful
-7. Vary slide purposes: some conceptual, some data-driven, some storytelling, some visual-heavy
-8. Make it feel like a professional human designer made it
-
-Return ONLY valid JSON, no markdown, no extra text:
-
+Extract and return ONLY valid JSON:
 {
-  "presentation_title": "...",
-  "subtitle": "...",
-  "palette": "palette_name_here",
-  "slides": [
-    {
-      "type": "title",
-      "layout": "title_left_visual",
-      "title": "...",
-      "subtitle": "...",
-      "image_prompt": "cinematic wide shot of ... ultra detailed, professional photography"
-    },
-    {
-      "type": "content",
-      "layout": "image_left_text_right",
-      "title": "...",
-      "content": ["point 1", "point 2", "point 3"],
-      "speaker_notes": "...",
-      "image_prompt": "detailed English prompt for this slide's image"
-    },
-    {
-      "type": "content",
-      "layout": "text_only_bold",
-      "title": "...",
-      "content": ["point 1", "point 2", "point 3", "point 4"],
-      "speaker_notes": "..."
-    },
-    {
-      "type": "end",
-      "layout": "thankyou_centered",
-      "title": "...",
-      "subtitle": "..."
-    }
-  ]
+  "topic": "main presentation topic",
+  "slide_count": 8,
+  "language": "kazakh|russian|english",
+  "user_preferences": "style/mood/visual preferences or null",
+  "visual_budget": "LOW|MEDIUM|HIGH"
 }
 
-Note: Only include "image_prompt" for slides that use image-based layouts.
-text_only_bold, grid_2x2, big_quote, icon_grid, title_centered, title_diagonal do NOT need image_prompt.
+Rules:
+- topic: main subject
+- slide_count: number mentioned, default 8, min 5 max 20
+- language: detect from message language
+- user_preferences: style wishes (dark, cinematic, minimal, historical etc) or null
+- visual_budget: LOW=no preference, MEDIUM=some visuals, HIGH=lots of images
+- Return ONLY JSON, no markdown
+`;
+
+  try {
+    const result = await model.generateContent(prompt);
+    const text = result.response.text();
+    const jsonMatch = text.match(/\{[\s\S]*\}/);
+    if (!jsonMatch) throw new Error("JSON жоқ");
+    const parsed = JSON.parse(jsonMatch[0]);
+    parsed.slide_count = clampSlideCount(parsed.slide_count);
+    return parsed;
+  } catch (err) {
+    logError("parseUserMessage", err);
+    return {
+      topic: message,
+      slide_count: 8,
+      language: "kazakh",
+      user_preferences: null,
+      visual_budget: "MEDIUM",
+    };
+  }
+}
+
+// ─── 2-ҚАДАМ: Слайд жоспары ───────────────────────────────────────────────────
+async function generateSlidesPlan(topic, slideCount, lang, userPreferences) {
+  const model = genAI.getGenerativeModel({ model: "gemini-3.6-flash" });
+  const langName = getLanguageName(lang);
+
+  const prefsBlock = userPreferences
+    ? `\nUser style preferences: "${userPreferences}"`
+    : "";
+
+  const prompt = `
+You are a professional presentation content writer and art director.
+Topic: "${topic}"
+Language for ALL text: ${langName}
+Total slides: ${slideCount}${prefsBlock}
+
+Create a complete slide plan. Return ONLY valid JSON array:
+[
+  {
+    "index": 0,
+    "type": "title",
+    "title": "...",
+    "subtitle": "...",
+    "content": [],
+    "style_hint": "dark cinematic, deep blue gradient, gold accent lines",
+    "mood": "dramatic, powerful, futuristic",
+    "text_position": "left"
+  },
+  {
+    "index": 1,
+    "type": "content",
+    "title": "...",
+    "subtitle": null,
+    "content": ["point 1", "point 2", "point 3"],
+    "style_hint": "minimal editorial, white space, strong typography",
+    "mood": "clean, professional, modern",
+    "text_position": "right"
+  },
+  {
+    "index": 2,
+    "type": "content",
+    "title": "...",
+    "subtitle": null,
+    "content": ["point 1", "point 2"],
+    "style_hint": "full bleed atmospheric photo, dark overlay",
+    "mood": "immersive, visual-heavy",
+    "text_position": "center"
+  },
+  {
+    "index": ${slideCount - 1},
+    "type": "end",
+    "title": "...",
+    "subtitle": "...",
+    "content": [],
+    "style_hint": "bold, memorable, brand closing",
+    "mood": "confident, inspiring",
+    "text_position": "center"
+  }
+]
+
+Rules:
+- First slide: type "title"
+- Last slide: type "end"
+- Middle slides: type "content", mix different style_hints
+- style_hint: be specific and creative, varies per slide
+- text_position: "left" | "right" | "center" — where text will sit on slide
+- content: 3-5 bullet points for content slides
+- Never repeat same style_hint twice
+- Return ONLY JSON array, no markdown
 `;
 
   const result = await model.generateContent(prompt);
   const text = result.response.text();
 
-  // JSON парсинг — мөлдір блоктарды тазалау
-  const jsonMatch = text.match(/\{[\s\S]*\}/);
-  if (!jsonMatch) throw new Error("Gemini JSON форматта жауап бермеді");
+  const jsonMatch = text.match(/\[[\s\S]*\]/);
+  if (!jsonMatch) throw new Error("Слайд жоспары JSON жоқ");
 
-  const data = JSON.parse(jsonMatch[0]);
-  validatePresentation(data, slideCount);
-  return data;
+  const slides = JSON.parse(jsonMatch[0]);
+  return validateSlides(slides, slideCount, lang);
 }
 
-// ─── Валидация: жетіспеген өрістерді толтыру ─────────────────────────────────
-function validatePresentation(data, slideCount) {
-  if (!data.presentation_title) data.presentation_title = "Презентация";
-  if (!data.subtitle) data.subtitle = "";
-  if (!data.palette) data.palette = "ocean_depth";
-  if (!Array.isArray(data.slides) || data.slides.length === 0) {
+// ─── Валидация ────────────────────────────────────────────────────────────────
+function validateSlides(slides, slideCount, lang) {
+  if (!Array.isArray(slides) || slides.length === 0) {
     throw new Error("Слайдтар жоқ");
   }
 
-  // Әр слайдтың міндетті өрістерін тексеру
-  data.slides = data.slides.map((slide, i) => {
-    if (!slide.type) slide.type = "content";
-    if (!slide.title) slide.title = `Слайд ${i + 1}`;
-    if (!slide.layout) {
-      slide.layout = slide.type === "title"
-        ? "title_centered"
-        : slide.type === "end"
-        ? "thankyou_centered"
-        : "text_only_bold";
-    }
-    if (!slide.content) slide.content = [];
+  return slides.map((slide, i) => {
+    if (!slide.type)       slide.type       = "content";
+    if (!slide.title)      slide.title      = `Слайд ${i + 1}`;
+    if (!slide.content)    slide.content    = [];
+    if (!slide.style_hint) slide.style_hint = "modern minimal, clean gradient";
+    if (!slide.mood)       slide.mood       = "professional";
+    if (!slide.text_position) slide.text_position = "left";
+    slide.index = i;
+    slide.lang  = lang;
     return slide;
   });
 }
 
-// ─── Жеке сурет промпты генерациялау (қажет болса) ───────────────────────────
-async function generateImagePrompt(slideTitle, topic, palette) {
-  try {
-    const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
-    const result = await model.generateContent(
-      `Write a vivid, cinematic image generation prompt (50-70 words) for a presentation slide.
-Slide title: "${slideTitle}"
-Presentation topic: "${topic}"
-Color mood: ${palette}
-Return ONLY the prompt text, nothing else.`
-    );
-    return result.response.text().trim();
-  } catch (err) {
-    logError("generateImagePrompt", err);
-    return null;
-  }
-}
-
 module.exports = {
-  generatePresentation,
-  generateImagePrompt,
+  parseUserMessage,
+  generateSlidesPlan,
 };

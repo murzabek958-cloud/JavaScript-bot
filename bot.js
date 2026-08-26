@@ -3,14 +3,25 @@ const TelegramBot = require("node-telegram-bot-api");
 const path = require("path");
 const os = require("os");
 
-const { generatePresentation } = require("./gemini");
+const { parseUserMessage, generateSlidesPlan } = require("./gemini");
+const { generateAllHTML } = require("./htmlGen");
+const { renderAllSlides, closeBrowser } = require("./renderer");
 const { buildPresentation } = require("./slideBuilder");
-const { detectLanguage, clampSlideCount, safeDelete, logError } = require("./utils");
+const { hasFreeAccess, useFree, usePaid, getUserStats } = require("./db");
+const { safeDelete, logError } = require("./utils");
 
-// ─── Инициализация ────────────────────────────────────────────────────────────
 const bot = new TelegramBot(process.env.TELEGRAM_BOT_TOKEN, { polling: true });
 
-// ─── Прогресс хабарламасын жаңарту ───────────────────────────────────────────
+// Төлем бағасы (Telegram Stars)
+const PRICE_STARS = 50; // ~100₸
+
+// Өңделіп жатқан пайдаланушылар
+const processing = new Set();
+
+// Күтудегі пайдаланушылар (төлемден кейін жасау үшін)
+const pending = new Map(); // userId → parsedData
+
+// ─── Статус жаңарту ───────────────────────────────────────────────────────────
 async function updateStatus(chatId, msgId, text) {
   try {
     await bot.editMessageText(text, {
@@ -18,149 +29,231 @@ async function updateStatus(chatId, msgId, text) {
       message_id: msgId,
       parse_mode: "Markdown",
     });
-  } catch (_) {
-    // Хабарлама өзгермесе Telegram қате береді — елемейміз
-  }
+  } catch (_) {}
 }
 
 // ─── /start ───────────────────────────────────────────────────────────────────
 bot.onText(/\/start/, (msg) => {
-  const name = msg.from.first_name || "Пайдаланушы";
-  bot.sendMessage(
-    msg.chat.id,
-    `👋 Сәлем, *${name}*\\!\n\n` +
-    `🎨 Мен кез келген тақырыпта бірегей *PowerPoint презентация* жасаймын\\.\n\n` +
-    `Әр презентация — әртүрлі композиция, түс палитрасы және макет\\.\n\n` +
-    `📌 *Пайдалану:*\n` +
-    `/present тақырып саны\n\n` +
-    `📝 *Мысалдар:*\n` +
-    `/present Жасанды интеллект 10\n` +
-    `/present Climate Change 8\n` +
-    `/present Машинное обучение 7\n\n` +
-    `ℹ️ Слайд саны: 5\\-тен 20\\-ға дейін`,
-    { parse_mode: "MarkdownV2" }
+  const name = msg.from.first_name || "Досым";
+  const stats = getUserStats(msg.from.id);
+
+  bot.sendMessage(msg.chat.id,
+    `👋 Сәлем, *${name}*!\n\n` +
+    `🎨 Маған кез келген тақырыпты жаз — кәсіби презентация жасаймын.\n\n` +
+    `*Мысалдар:*\n` +
+    `_Қазақ хандығы туралы 10 слайд, тарихи стиль_\n` +
+    `_Жасанды интеллект, 8 слайд, қараңғы cinematic_\n` +
+    `_Climate change presentation, 6 slides, minimal_\n\n` +
+    `🎁 *Тегін:* ${stats.freeLeft} презентация қалды\n` +
+    `⭐ *Төлемді:* ${PRICE_STARS} Stars (~100₸)`,
+    { parse_mode: "Markdown" }
+  );
+});
+
+// ─── /stats ───────────────────────────────────────────────────────────────────
+bot.onText(/\/stats/, (msg) => {
+  const stats = getUserStats(msg.from.id);
+  bot.sendMessage(msg.chat.id,
+    `📊 *Сіздің статистика:*\n\n` +
+    `🎁 Тегін қалды: *${stats.freeLeft}* / 2\n` +
+    `📊 Жалпы презентация: *${stats.totalPresentations}*\n` +
+    `⭐ Жұмсалған Stars: *${stats.totalPaid}*`,
+    { parse_mode: "Markdown" }
   );
 });
 
 // ─── /help ────────────────────────────────────────────────────────────────────
 bot.onText(/\/help/, (msg) => {
-  bot.sendMessage(
-    msg.chat.id,
-    `📖 *Командалар:*\n\n` +
-    `/start — Ботты іске қосу\n` +
-    `/present <тақырып> <слайд саны> — Презентация жасау\n` +
-    `/help — Көмек\n\n` +
-    `💡 *Ерекшеліктер:*\n` +
-    `• Тілді автоматты анықтайды\n` +
-    `• Gemini AI сурет генерациялайды\n` +
-    `• Сурет сәтсіз болса — геометриялық визуал\n` +
-    `• Әр жолы бірегей композиция`,
+  bot.sendMessage(msg.chat.id,
+    `📖 *Қалай пайдалануға болады?*\n\n` +
+    `Кәдімгі хабарлама жаз:\n\n` +
+    `• _Ғарыш зерттеулері, 8 слайд_\n` +
+    `• _Dark cinematic style, blockchain_\n` +
+    `• _Ұлы Жібек жолы, тарихи стиль_\n\n` +
+    `*Бот өзі анықтайды:*\n` +
+    `✅ Тақырып\n` +
+    `✅ Слайд саны (айтпасаң — 8)\n` +
+    `✅ Стиль және көңіл-күй\n` +
+    `✅ Тіл (қаз/орыс/ағыл)\n\n` +
+    `*Бағасы:*\n` +
+    `🎁 Айына 2 тегін\n` +
+    `⭐ ${PRICE_STARS} Stars = 1 презентация`,
     { parse_mode: "Markdown" }
   );
 });
 
-// ─── /present ─────────────────────────────────────────────────────────────────
-bot.onText(/\/present (.+)/, async (msg, match) => {
+// ─── НЕГІЗГІ ӨҢДЕУШІ ──────────────────────────────────────────────────────────
+bot.on("message", async (msg) => {
+  if (!msg.text || msg.text.startsWith("/")) return;
+
   const chatId = msg.chat.id;
-  const input = match[1].trim();
+  const userId = msg.from.id;
+  const userMessage = msg.text.trim();
 
-  // Тақырып + слайд санын бөлу
-  const parts = input.match(/^(.*?)\s+(\d+)$/);
-  let topic, slideCount;
-
-  if (parts) {
-    topic = parts[1].trim();
-    slideCount = clampSlideCount(parts[2]);
-  } else {
-    topic = input;
-    slideCount = 8;
+  if (processing.has(userId)) {
+    bot.sendMessage(chatId, `⏳ Алдыңғы презентация жасалуда, күте тұрыңыз...`);
+    return;
   }
 
-  const lang = detectLanguage(topic);
-  const langLabel = lang === "kazakh" ? "🇰🇿 Қазақша" : lang === "russian" ? "🇷🇺 Орысша" : "🇬🇧 English";
+  processing.add(userId);
+  let statusMsg = null;
 
-  // Бастапқы статус хабарламасы
-  const statusMsg = await bot.sendMessage(
-    chatId,
-    `⏳ *Дайындалуда...*\n\n` +
-    `📌 *Тақырып:* ${topic}\n` +
-    `🗂 *Слайд саны:* ${slideCount}\n` +
-    `🌐 *Тіл:* ${langLabel}\n\n` +
-    `_1/3 — Gemini композиция жасауда..._`,
+  try {
+    // ── 1) Хабарламаны парсинг ─────────────────────────────────────────────
+    statusMsg = await bot.sendMessage(chatId,
+      `🧠 *Түсінуде...*`,
+      { parse_mode: "Markdown" }
+    );
+
+    const parsed = await parseUserMessage(userMessage);
+    const { topic, slide_count, language, user_preferences } = parsed;
+
+    const langLabel = language === "kazakh" ? "🇰🇿 Қазақша"
+      : language === "russian" ? "🇷🇺 Орысша" : "🇬🇧 English";
+
+    // ── 2) Тегін лимит тексеру ─────────────────────────────────────────────
+    if (hasFreeAccess(userId)) {
+      await updateStatus(chatId, statusMsg.message_id,
+        `✅ *Түсіндім!*\n\n` +
+        `📌 *Тақырып:* ${topic}\n` +
+        `🗂 *Слайд:* ${slide_count}\n` +
+        `🌐 *Тіл:* ${langLabel}\n` +
+        (user_preferences ? `💬 *Стиль:* ${user_preferences}\n` : "") +
+        `\n🎁 *Тегін презентация жасалуда...*`
+      );
+
+      await createPresentation(chatId, userId, statusMsg.message_id, parsed, true);
+
+    } else {
+      // ── Төлем сұрату ──────────────────────────────────────────────────────
+      pending.set(userId, parsed);
+
+      await updateStatus(chatId, statusMsg.message_id,
+        `✅ *Түсіндім!*\n\n` +
+        `📌 *Тақырып:* ${topic}\n` +
+        `🗂 *Слайд:* ${slide_count}\n` +
+        `🌐 *Тіл:* ${langLabel}\n\n` +
+        `🎁 Тегін лимит таусылды.\n` +
+        `⭐ Төлем: *${PRICE_STARS} Stars* (~100₸)`
+      );
+
+      await bot.sendInvoice(
+        chatId,
+        `🎨 Презентация: ${topic}`,
+        `${slide_count} слайд · кәсіби дизайн · 2 минутта дайын`,
+        `pptx_${userId}_${Date.now()}`,
+        "",
+        "XTR",
+        [{ label: "1 презентация", amount: PRICE_STARS }]
+      );
+    }
+
+  } catch (err) {
+    logError("bot:message", err);
+    if (statusMsg) {
+      await updateStatus(chatId, statusMsg.message_id,
+        `❌ *Қате:* \`${err.message?.slice(0, 150)}\`\n\nҚайта жазып көріңіз.`
+      );
+    }
+  } finally {
+    processing.delete(userId);
+  }
+});
+
+// ─── ТӨЛЕМ РАСТАУ ─────────────────────────────────────────────────────────────
+bot.on("pre_checkout_query", (query) => {
+  bot.answerPreCheckoutQuery(query.id, true);
+});
+
+bot.on("successful_payment", async (msg) => {
+  const chatId = msg.chat.id;
+  const userId = msg.from.id;
+  const stars  = msg.successful_payment.total_amount;
+
+  const parsed = pending.get(userId);
+  pending.delete(userId);
+
+  if (!parsed) {
+    bot.sendMessage(chatId, `✅ Төлем қабылданды! Хабарлама жазыңыз.`);
+    return;
+  }
+
+  usePaid(userId, stars);
+
+  const statusMsg = await bot.sendMessage(chatId,
+    `⭐ *Төлем қабылданды!*\n\n_Презентация жасалуда..._`,
     { parse_mode: "Markdown" }
   );
 
-  const msgId = statusMsg.message_id;
+  await createPresentation(chatId, userId, statusMsg.message_id, parsed, false);
+});
+
+// ─── ПРЕЗЕНТАЦИЯ ЖАСАУ ────────────────────────────────────────────────────────
+async function createPresentation(chatId, userId, msgId, parsed, isFree) {
+  const { topic, slide_count, language, user_preferences } = parsed;
   let tmpFile = null;
 
   try {
-    // ── 1-қадам: Gemini контент + композиция ─────────────────────────────
-    const presentationData = await generatePresentation(topic, slideCount, lang);
-
-    // ── 2-қадам: Слайдтарды салу ──────────────────────────────────────────
+    // 1) Слайд жоспары
     await updateStatus(chatId, msgId,
-      `⏳ *Дайындалуда...*\n\n` +
-      `📌 *Тақырып:* ${topic}\n\n` +
-      `_2/3 — Слайдтар мен суреттер жасалуда..._\n` +
-      `_(бұл 30\\-60 секунд алуы мүмкін)_`
+      `🎨 *1/4 — Art Director жұмыста...*\n_Слайд жоспары жасалуда..._`
     );
+    const slides = await generateSlidesPlan(topic, slide_count, language, user_preferences);
 
+    // 2) HTML фондар
+    await updateStatus(chatId, msgId,
+      `🖌 *2/4 — Дизайн жасалуда...*\n_${slides.length} слайдқа HTML/CSS фон..._`
+    );
+    const htmlList = await generateAllHTML(slides);
+
+    // 3) Скриншоттар
+    await updateStatus(chatId, msgId,
+      `📸 *3/4 — Рендерлеуде...*\n_Puppeteer скриншот алуда..._`
+    );
+    const renderedList = await renderAllSlides(htmlList);
+
+    // 4) PPTX жинау
+    await updateStatus(chatId, msgId,
+      `📦 *4/4 — PPTX жинауда...*`
+    );
     tmpFile = path.join(os.tmpdir(), `pptx_${Date.now()}.pptx`);
-    await buildPresentation(presentationData, tmpFile);
+    await buildPresentation(slides, renderedList, tmpFile);
 
-    // ── 3-қадам: Файл жіберу ──────────────────────────────────────────────
-    await updateStatus(chatId, msgId,
-      `✅ *Дайын\\!*\n\n📎 _Файл жіберілуде..._`
-    );
-
-    const caption =
-      `🎨 *${escapeMarkdown(presentationData.presentation_title)}*\n\n` +
-      `🗂 ${presentationData.slides.length} слайд\n` +
-      `🎨 Палитра: \`${presentationData.palette}\`\n` +
-      `🤖 Gemini AI генерациялады`;
+    // 5) Жіберу
+    if (isFree) useFree(userId);
+    const stats = getUserStats(userId);
 
     await bot.sendDocument(chatId, tmpFile, {
-      caption,
+      caption:
+        `🎨 *${escMd(topic)}*\n\n` +
+        `🗂 ${slides.length} слайд\n` +
+        `🤖 Gemini Art Director\n\n` +
+        `🎁 Тегін қалды: ${stats.freeLeft} / 2`,
       parse_mode: "Markdown",
     });
 
     await bot.deleteMessage(chatId, msgId);
 
   } catch (err) {
-    logError("bot:/present", err);
-
-    // Қандай қате болса да — хабарлама жіберіледі
+    logError("createPresentation", err);
     await updateStatus(chatId, msgId,
-      `❌ *Қате орын алды*\n\n` +
-      `\`${err.message?.slice(0, 200)}\`\n\n` +
-      `Қайта көріңіз немесе тақырыпты өзгертіп байқаңыз.`
+      `❌ *Қате:* \`${err.message?.slice(0, 150)}\`\n\nҚайта жазып көріңіз.`
     );
   } finally {
-    // Уақытша файлды қауіпсіз өшіру
     safeDelete(tmpFile);
   }
-});
+}
 
-// ─── Белгісіз хабарламалар ────────────────────────────────────────────────────
-bot.on("message", (msg) => {
-  if (msg.text && !msg.text.startsWith("/")) {
-    bot.sendMessage(
-      msg.chat.id,
-      `💡 Презентация жасау үшін:\n\n` +
-      `/present <тақырып> <слайд саны>\n\n` +
-      `Мысалы:\n/present Жасанды интеллект 8`
-    );
-  }
-});
+// ─── Polling қателері ─────────────────────────────────────────────────────────
+bot.on("polling_error", (err) => logError("polling", err));
 
-// ─── Polling қателерін өңдеу ──────────────────────────────────────────────────
-bot.on("polling_error", (err) => {
-  logError("polling", err);
-});
+// ─── Процесс жабылғанда браузерді жабу ───────────────────────────────────────
+process.on("SIGINT",  async () => { await closeBrowser(); process.exit(0); });
+process.on("SIGTERM", async () => { await closeBrowser(); process.exit(0); });
 
-// ─── MarkdownV2 үшін экрандау ─────────────────────────────────────────────────
-function escapeMarkdown(text) {
+// ─── MarkdownV2 экрандау ──────────────────────────────────────────────────────
+function escMd(text) {
   return (text || "").replace(/[_*[\]()~`>#+=|{}.!\\-]/g, "\\$&");
 }
 
-console.log("🤖 Бот іске қосылды! /present командасын күтуде...");
+console.log("🤖 Бот іске қосылды!");
