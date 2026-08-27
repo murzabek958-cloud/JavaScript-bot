@@ -1,4 +1,4 @@
-const puppeteer = require("puppeteer");
+const puppeteer = require("puppeteer-core");
 const { zoneToInches, logError } = require("./utils");
 
 let browser = null;
@@ -7,7 +7,7 @@ let browser = null;
 async function getBrowser() {
   if (!browser || !browser.connected) {
     browser = await puppeteer.launch({
-    executablePath: "/data/data/com.termux/files/usr/bin/chromium-browser",
+    executablePath: process.env.CHROMIUM_PATH || "/data/data/com.termux/files/usr/bin/chromium-browser",
       headless: "new",
       args: [
         "--no-sandbox",

@@ -2,96 +2,115 @@ const fs = require("fs");
 const path = require("path");
 
 const DB_PATH = path.join(__dirname, "users.json");
+const PENDING_PATH = path.join(__dirname, "pending.json");
 
-// ─── Базаны жүктеу ────────────────────────────────────────────────────────────
-function loadDB() {
+function writeAtomic(filePath, data) {
+  const tmp = filePath + ".tmp";
+  fs.writeFileSync(tmp, JSON.stringify(data, null, 2), "utf-8");
+  fs.renameSync(tmp, filePath);
+}
+
+function loadJSON(filePath, fallback) {
   try {
-    if (!fs.existsSync(DB_PATH)) return {};
-    return JSON.parse(fs.readFileSync(DB_PATH, "utf-8"));
+    if (!fs.existsSync(filePath)) return fallback;
+    return JSON.parse(fs.readFileSync(filePath, "utf-8"));
   } catch {
-    return {};
+    return fallback;
   }
 }
 
-// ─── Базаны сақтау ────────────────────────────────────────────────────────────
-function saveDB(db) {
-  try {
-    fs.writeFileSync(DB_PATH, JSON.stringify(db, null, 2));
-  } catch (err) {
-    console.error("[db] Сақтау қатесі:", err.message);
-  }
+function getCurrentMonth() {
+  const d = new Date();
+  return `${d.getFullYear()}-${d.getMonth() + 1}`;
 }
 
-// ─── Пайдаланушы алу / жасау ─────────────────────────────────────────────────
 function getUser(userId) {
-  const db = loadDB();
+  const db = loadJSON(DB_PATH, {});
+
   if (!db[userId]) {
     db[userId] = {
       id: userId,
       free_used: 0,
       free_limit: 2,
       total_presentations: 0,
-      total_paid: 0,
+      total_paid_tenge: 0,
       created_at: new Date().toISOString(),
       last_reset: getCurrentMonth(),
     };
-    saveDB(db);
+
+    writeAtomic(DB_PATH, db);
   }
 
   const user = db[userId];
 
-  // Ай басында тегін лимитті қайтарамыз
   if (user.last_reset !== getCurrentMonth()) {
     user.free_used = 0;
     user.last_reset = getCurrentMonth();
-    db[userId] = user;
-    saveDB(db);
+    writeAtomic(DB_PATH, db);
   }
 
   return user;
 }
 
-// ─── Тегін лимит тексеру ──────────────────────────────────────────────────────
 function hasFreeAccess(userId) {
   const user = getUser(userId);
   return user.free_used < user.free_limit;
 }
 
-// ─── Тегін презентация қолдану ────────────────────────────────────────────────
 function useFree(userId) {
-  const db = loadDB();
+  const db = loadJSON(DB_PATH, {});
   const user = getUser(userId);
+
   user.free_used += 1;
   user.total_presentations += 1;
+
   db[userId] = user;
-  saveDB(db);
+  writeAtomic(DB_PATH, db);
 }
 
-// ─── Төлемді презентация тіркеу ───────────────────────────────────────────────
-function usePaid(userId, stars) {
-  const db = loadDB();
+function usePaid(userId, amountTenge) {
+  const db = loadJSON(DB_PATH, {});
   const user = getUser(userId);
+
   user.total_presentations += 1;
-  user.total_paid += stars;
+  user.total_paid_tenge += amountTenge;
+
   db[userId] = user;
-  saveDB(db);
+  writeAtomic(DB_PATH, db);
 }
 
-// ─── Пайдаланушы статистикасы ─────────────────────────────────────────────────
+function savePending(userId, parsedData) {
+  const pending = loadJSON(PENDING_PATH, {});
+
+  pending[userId] = {
+    data: parsedData,
+    created_at: new Date().toISOString(),
+  };
+
+  writeAtomic(PENDING_PATH, pending);
+}
+
+function getPending(userId) {
+  const pending = loadJSON(PENDING_PATH, {});
+  return pending[userId]?.data || null;
+}
+
+function deletePending(userId) {
+  const pending = loadJSON(PENDING_PATH, {});
+
+  delete pending[userId];
+
+  writeAtomic(PENDING_PATH, pending);
+}
+
 function getUserStats(userId) {
   const user = getUser(userId);
-  const freeLeft = Math.max(0, user.free_limit - user.free_used);
-  return {
-    freeLeft,
-    totalPresentations: user.total_presentations,
-    totalPaid: user.total_paid,
-  };
-}
 
-// ─── Ағымдағы ай (лимит reset үшін) ──────────────────────────────────────────
-function getCurrentMonth() {
-  const d = new Date();
-  return `${d.getFullYear()}-${d.getMonth() + 1}`;
+  return {
+    freeLeft: Math.max(0, user.free_limit - user.free_used),
+    totalPresentations: user.total_presentations,
+    totalPaidTenge: user.total_paid_tenge,
+  };
 }
 
 module.exports = {
@@ -99,5 +118,8 @@ module.exports = {
   hasFreeAccess,
   useFree,
   usePaid,
+  savePending,
+  getPending,
+  deletePending,
   getUserStats,
 };

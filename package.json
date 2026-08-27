@@ -1,16 +1,18 @@
 {
   "name": "tg-pptx-bot",
-  "version": "3.0.0",
-  "description": "Telegram AI презентация боты — студенттер үшін",
+  "version": "4.0.0",
+  "description": "Telegram AI презентация боты",
   "main": "bot.js",
   "scripts": {
-    "start": "node bot.js"
+    "start": "node bot.js",
+    "dev": "node --watch bot.js"
   },
   "dependencies": {
     "node-telegram-bot-api": "^0.66.0",
     "@google/generative-ai": "^0.21.0",
     "pptxgenjs": "^3.12.0",
-    "puppeteer": "^22.0.0",
+    "puppeteer-core": "^22.0.0",
     "dotenv": "^16.4.5"
   }
 }
+
