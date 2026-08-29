@@ -216,13 +216,29 @@ async function buildHtmlList(deck) {
 
     const imageMap = {};
 
+    // Pass 1: foreground zones — collect used image IDs to avoid reuse
+    const usedIds = new Set();
     for (const item of resolved) {
-      if (item.image && item.image.url && item.zone) {
+      if (item.image && item.image.url && item.zone && !item.isBackground) {
         imageMap[item.zone] = item.image.url;
+        usedIds.add(item.image.id);
+        console.log(`[unsplash] ${item.zone}: ${item.image.id}`);
+      }
+    }
 
-        console.log(
-          `[unsplash] ${item.zone}: ${item.image.id}`
-        );
+    // Pass 2: background zone — stored as imageMap.background
+    for (const item of resolved) {
+      if (item.isBackground && item.zone === 'background') {
+        if (item.image && item.image.url) {
+          if (usedIds.has(item.image.id)) {
+            console.log(`[unsplash] background: candidate ${item.image.id} already used by foreground — still applying`);
+          }
+          imageMap.background = item.image.url;
+          console.log(`[unsplash] background: ${item.image.id}`);
+        } else {
+          imageMap.background = null;
+          console.log(`[unsplash] background: no image found — fallbackColor will be used`);
+        }
       }
     }
 

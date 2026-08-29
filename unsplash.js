@@ -86,20 +86,70 @@ async function getImagesForRequirements(imageRequirements = []) {
         5
       );
 
-      /*
-       * Image search is slide-driven, not zone-driven.
-       * The layout/zone only controls placement and cropping.
-       *
-       * For now choose the first valid Unsplash result.
-       * We request 5 candidates so a later quality selector
-       * can choose among them without changing the API layer.
-       */
-      const image = photos.find(photo =>
-        photo &&
-        photo.url &&
-        Number(photo.width) > 0 &&
-        Number(photo.height) > 0
-      ) || null;
+      // Score each candidate and pick the best match for the zone.
+      console.log(
+        `[unsplash-debug] zone=${requirement.zone || 'image'} ` +
+        `isBackground=${Boolean(requirement.isBackground)} ` +
+        `query="${requirement.queryIntent}" photos=${photos.length}`
+      );
+
+      const candidates = photos.filter(p =>
+        p && p.url && Number(p.width) > 0 && Number(p.height) > 0
+      );
+
+      console.log(
+        `[unsplash-debug] zone=${requirement.zone || 'image'} ` +
+        `candidates=${candidates.length}`
+      );
+
+      if (photos.length === 0) {
+        console.log(
+          `[unsplash-debug] NO RESULTS: zone=${requirement.zone || 'image'} ` +
+          `query="${requirement.queryIntent}"`
+        );
+      }
+
+      let image = null;
+
+      if (candidates.length > 0) {
+        const dim      = requirement.dimensions;
+        const zoneRatio = (dim && dim.w > 0 && dim.h > 0)
+          ? dim.w / dim.h
+          : null;
+
+        const scored = candidates.map(p => {
+          const photoRatio = p.width / p.height;
+          let score = 0;
+
+          if (zoneRatio !== null) {
+            // Ratio score scaled to 0–10
+            const ratioScore = 10 / (1 + Math.abs(Math.log(photoRatio / zoneRatio)));
+            score += ratioScore;
+
+            // Orientation bonus
+            const zLand = zoneRatio  > 1.1;
+            const zPort = zoneRatio  < 0.9;
+            const pLand = photoRatio > 1.1;
+            const pPort = photoRatio < 0.9;
+            if      (zLand && pLand)   score += 2;
+            else if (zPort && pPort)   score += 2;
+            else if (!zLand && !zPort && !pLand && !pPort) score += 2; // both square-ish
+          }
+
+          // Resolution bonus — capped at +1
+          score += Math.min((p.width * p.height) / 1_000_000 / 5, 1);
+
+          return { photo: p, score };
+        });
+
+        scored.sort((a, b) => b.score - a.score);
+        image = scored[0].photo;
+
+        console.log(
+          `[unsplash] ${requirement.zone}: selected ${image.id} ` +
+          `score=${scored[0].score.toFixed(2)} (${image.width}x${image.height})`
+        );
+      }
 
       results.push({
         ...requirement,

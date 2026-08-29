@@ -237,13 +237,31 @@ function renderSlide(slideModel, imageMap = {}, theme = {}) {
   const t = { ...DEFAULT_THEME, ...theme };
   const { canvas, zones, layers, background, layoutId, slideId } = slideModel;
 
-  // Slide wrapper
+  // ── Background resolution ────────────────────────────────────────────────
+  // When background.type === 'image' and imageMap.background is set,
+  // apply it as a CSS background-image on the slide wrapper.
+  // The 'bg-image' class lets renderer.js detect it via .bg-image selector.
+  // If no URL is available, use fallbackColor only (no broken bg-image).
+  const hasBgImage =
+    background?.type === 'image' && imageMap.background;
+
+  const bgColor = background?.type === 'image'
+    ? (background.fallbackColor || '#111111')
+    : t.colorBg;
+
+  const wrapClass = hasBgImage ? 'slide bg-image' : 'slide';
+
   const wrapStyle = `
     position: relative;
     width: ${px(canvas.w)};
     height: ${px(canvas.h)};
     overflow: hidden;
-    background-color: ${t.colorBg};
+    background-color: ${bgColor};
+    ${hasBgImage
+      ? `background-image: url("${escapeHtml(imageMap.background)}");
+    background-size: cover;
+    background-position: center;`
+      : ''}
     font-family: ${t.fontFamily};
     box-sizing: border-box;
   `;
@@ -276,7 +294,7 @@ function renderSlide(slideModel, imageMap = {}, theme = {}) {
     }
   }).join('\n  ');
 
-  return `<div class="slide" id="${escapeHtml(slideId)}" data-layout="${escapeHtml(layoutId)}"
+  return `<div class="${wrapClass}" id="${escapeHtml(slideId)}" data-layout="${escapeHtml(layoutId)}"
        style="${wrapStyle}">
   ${zoneHtml}
 </div>`;

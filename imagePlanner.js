@@ -164,7 +164,7 @@ function resolveHint(hint, ctx) {
  * @returns {ImageRequirement[]}
  */
 function imagePlanner(layoutId, ctx) {
-  const layout   = getLayout(layoutId);
+  const layout    = getLayout(layoutId);
   const zoneRoles = ZONE_ROLES[layoutId] || {};
 
   // Collect image zones from layout definition
@@ -172,28 +172,48 @@ function imagePlanner(layoutId, ctx) {
     .filter(([, zone]) => zone.type === 'image')
     .map(([zoneName]) => zoneName);
 
-  if (imageZones.length === 0) return [];
-
-  return imageZones.map(zoneName => {
+  const requirements = imageZones.map(zoneName => {
     const zoneConfig = zoneRoles[zoneName] || {};
     const role       = ROLES[zoneConfig.role || 'supporting'];
     const zone       = layout.zones[zoneName];
 
     return {
-      zone:        zoneName,
-      role:        role.label,
-      importance:  role.importance,
-      queryIntent: resolveHint(zoneConfig.queryHint, ctx),
-      crop:        zoneConfig.crop  || zone.crop     || 'cover',
-      position:    zoneConfig.position || zone.position || 'center',
-      dimensions:  { w: zone.w, h: zone.h },
+      zone:         zoneName,
+      role:         role.label,
+      importance:   role.importance,
+      queryIntent:  resolveHint(zoneConfig.queryHint, ctx),
+      crop:         zoneConfig.crop     || zone.crop     || 'cover',
+      position:     zoneConfig.position || zone.position || 'center',
+      dimensions:   { w: zone.w, h: zone.h },
       borderRadius: zone.borderRadius,
-      overlay:     zone.overlay,
-      note:        role.note,
+      overlay:      zone.overlay,
+      note:         role.note,
       // Special flag: this zone is rendered by the chart engine, not an image fetch
-      isChartZone: zoneConfig.role === 'chart',
+      isChartZone:  zoneConfig.role === 'chart',
+      isBackground: false,
     };
   });
+
+  // ── Background image requirement ─────────────────────────────────────────
+  // If the layout declares background.type === 'image', append a dedicated
+  // requirement so the asset pipeline fetches a full-canvas landscape photo.
+  // This is separate from any foreground image zone.
+  if (layout.background && layout.background.type === 'image') {
+    const topic = ctx.topic || ctx.slideTitle || 'the subject';
+    requirements.push({
+      zone:         'background',
+      role:         'hero',
+      importance:   'primary',
+      queryIntent:  `cinematic atmospheric background photograph of ${topic}`,
+      crop:         'cover',
+      position:     'center',
+      dimensions:   { w: 1333, h: 750 },
+      isBackground: true,
+      isChartZone:  false,
+    });
+  }
+
+  return requirements;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
