@@ -1,0 +1,996 @@
+'use strict';
+
+/**
+ * layoutLibrary.js
+ * ─────────────────────────────────────────────────────────────────────────────
+ * Single source of truth for all 25 layout archetypes.
+ * Canvas: 1333 × 750 px.
+ *
+ * Nothing in this file is AI-generated at runtime.
+ * Gemini / any LLM touches ONLY:
+ *   - slideType, textAmount, contentStructure, imageCountAvailable,
+ *     preferredImageCount, isImageImportant
+ * Pixel coordinates, z-indices, crop modes, typography scales — all static here.
+ * ─────────────────────────────────────────────────────────────────────────────
+ */
+
+const CANVAS = { w: 1333, h: 750 };
+
+// ─── Typography scale (pt → unitless multiplier, renderer converts to px/rem) ─
+const TYPE = {
+  DISPLAY_XL: 108, // section-break hero title
+  DISPLAY_LG:  96, // full-bleed hero title
+  DISPLAY_MD:  80, // label on section break
+  H1:          72,
+  H2:          60,
+  H3:          56,
+  H4:          50,
+  H5:          48,
+  H6:          44,
+  H7:          40,
+  BODY_LG:     28,
+  BODY_MD:     24,
+  BODY_SM:     20,
+  BODY_XS:     18,
+  CAPTION:     16,
+  STAT:       180, // large statistic
+};
+
+// ─── Overlay helpers ──────────────────────────────────────────────────────────
+const OVERLAY = {
+  NONE:      { type: 'none' },
+  DARK_40:   { type: 'gradient', direction: 'bottom-to-top', opacity: 0.40, color: '#000' },
+  DARK_90:   { type: 'solid',    opacity: 0.90, color: '#000' },
+  BLUR_DARK: { type: 'blur',     blur: 24,      opacity: 0.88, color: '#000' },
+};
+
+// ─── Crop modes ───────────────────────────────────────────────────────────────
+const CROP = { COVER: 'cover', CONTAIN: 'contain' };
+const POS  = { CENTER: 'center', TOP: 'top', BOTTOM: 'bottom',
+               LEFT: 'left', RIGHT: 'right', TOP_LEFT: 'top left' };
+
+// ─── Alignment ────────────────────────────────────────────────────────────────
+const ALIGN = { LEFT: 'left', CENTER: 'center', RIGHT: 'right' };
+
+// ─── Max characters per zone (guides overflow truncation) ─────────────────────
+const MAX = {
+  TITLE_HERO:    80,
+  TITLE_STD:     60,
+  TITLE_SMALL:   40,
+  SUBTITLE:      120,
+  BODY_FULL:     600,
+  BODY_HALF:     300,
+  BODY_NARROW:   200,
+  BODY_COL:      200,
+  CAPTION:       120,
+  STAT:           12,
+  LABEL:          30,
+  QUOTE:         320,
+  ATTRIBUTION:    80,
+  SIDEBAR_LABEL:  25,
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
+// LAYOUTS
+// ─────────────────────────────────────────────────────────────────────────────
+
+const LAYOUTS = {
+
+  // ── 01 Full-Bleed Hero ────────────────────────────────────────────────────
+  LAYOUT_01: {
+    id: 'LAYOUT_01',
+    name: 'Full-Bleed Hero',
+    bestFor: ['title', 'section'],
+    imageCount: { min: 1, max: 1 },
+    contentStructure: ['paragraph', 'mixed'],
+    textAmount: ['short', 'medium'],
+    layers: [
+      { zone: 'image_1',  zIndex: 1 },
+      { zone: 'overlay',  zIndex: 2 },
+      { zone: 'title',    zIndex: 3 },
+      { zone: 'subtitle', zIndex: 3 },
+    ],
+    zones: {
+      image_1:  { x: 0,  y: 0,   w: 1333, h: 750, type: 'image',
+                  crop: CROP.COVER, position: POS.CENTER,
+                  borderRadius: 0, overlay: OVERLAY.DARK_40 },
+      title:    { x: 80, y: 440, w: 850,  h: 120, type: 'text',
+                  fontSize: TYPE.H1, fontWeight: 700, color: '#fff',
+                  align: ALIGN.LEFT, maxChars: MAX.TITLE_HERO },
+      subtitle: { x: 80, y: 580, w: 850,  h:  80, type: 'text',
+                  fontSize: TYPE.H7, fontWeight: 400, color: 'rgba(255,255,255,0.85)',
+                  align: ALIGN.LEFT, maxChars: MAX.SUBTITLE },
+    },
+    background: { type: 'image', fallbackColor: '#111' },
+    fallback: { ifImages0: 'LAYOUT_10', ifImages1: 'LAYOUT_01' },
+    scoreWeights: { isTitle: 3, isSection: 2, shortText: 1, hasImage: 2 },
+    distinctiveIdentity: 'edge-to-edge image sole background',
+  },
+
+  // ── 02 Classic Split Left ─────────────────────────────────────────────────
+  LAYOUT_02: {
+    id: 'LAYOUT_02',
+    name: 'Classic Split Left',
+    bestFor: ['content'],
+    imageCount: { min: 1, max: 1 },
+    contentStructure: ['paragraph', 'mixed', 'bullets'],
+    textAmount: ['medium', 'long'],
+    layers: [
+      { zone: 'image_1', zIndex: 1 },
+      { zone: 'title',   zIndex: 2 },
+      { zone: 'body',    zIndex: 2 },
+    ],
+    zones: {
+      image_1: { x: 0,   y: 0,   w: 666, h: 750, type: 'image',
+                 crop: CROP.COVER, position: POS.CENTER,
+                 borderRadius: 0, overlay: OVERLAY.NONE },
+      title:   { x: 746, y: 220, w: 507, h: 100, type: 'text',
+                 fontSize: TYPE.H5, fontWeight: 700, color: null,
+                 align: ALIGN.LEFT, maxChars: MAX.TITLE_STD },
+      body:    { x: 746, y: 340, w: 507, h: 300, type: 'text',
+                 fontSize: TYPE.BODY_MD, fontWeight: 400, color: null,
+                 align: ALIGN.LEFT, maxChars: MAX.BODY_HALF },
+    },
+    background: { type: 'solid' },
+    fallback: { ifImages0: 'LAYOUT_22' },
+    scoreWeights: { isContent: 3, mediumText: 2, longText: 1, hasImage: 2 },
+    distinctiveIdentity: 'perfect 50/50 split image touching three edges',
+  },
+
+  // ── 03 Classic Split Right ────────────────────────────────────────────────
+  LAYOUT_03: {
+    id: 'LAYOUT_03',
+    name: 'Classic Split Right',
+    bestFor: ['content'],
+    imageCount: { min: 1, max: 1 },
+    contentStructure: ['paragraph', 'mixed', 'bullets'],
+    textAmount: ['medium', 'long'],
+    layers: [
+      { zone: 'title',   zIndex: 2 },
+      { zone: 'body',    zIndex: 2 },
+      { zone: 'image_1', zIndex: 1 },
+    ],
+    zones: {
+      title:   { x:  80, y: 220, w: 507, h: 100, type: 'text',
+                 fontSize: TYPE.H5, fontWeight: 700, color: null,
+                 align: ALIGN.LEFT, maxChars: MAX.TITLE_STD },
+      body:    { x:  80, y: 340, w: 507, h: 300, type: 'text',
+                 fontSize: TYPE.BODY_MD, fontWeight: 400, color: null,
+                 align: ALIGN.LEFT, maxChars: MAX.BODY_HALF },
+      image_1: { x: 667, y:   0, w: 666, h: 750, type: 'image',
+                 crop: CROP.COVER, position: POS.CENTER,
+                 borderRadius: 0, overlay: OVERLAY.NONE },
+    },
+    background: { type: 'solid' },
+    fallback: { ifImages0: 'LAYOUT_22' },
+    scoreWeights: { isContent: 3, mediumText: 2, longText: 1, hasImage: 2 },
+    distinctiveIdentity: 'text strictly left 50%, edge-to-edge right image',
+  },
+
+  // ── 04 Asymmetric Image Dominant ──────────────────────────────────────────
+  LAYOUT_04: {
+    id: 'LAYOUT_04',
+    name: 'Asymmetric Image Dominant',
+    bestFor: ['content'],
+    imageCount: { min: 1, max: 1 },
+    contentStructure: ['paragraph', 'mixed'],
+    textAmount: ['short', 'medium'],
+    layers: [
+      { zone: 'image_1', zIndex: 1 },
+      { zone: 'title',   zIndex: 2 },
+      { zone: 'body',    zIndex: 2 },
+    ],
+    zones: {
+      image_1: { x:   0, y:   0, w: 866, h: 750, type: 'image',
+                 crop: CROP.COVER, position: POS.CENTER,
+                 borderRadius: 0, overlay: OVERLAY.NONE },
+      title:   { x: 930, y: 150, w: 323, h: 150, type: 'text',
+                 fontSize: TYPE.H4, fontWeight: 700, color: null,
+                 align: ALIGN.LEFT, maxChars: MAX.TITLE_SMALL },
+      body:    { x: 930, y: 320, w: 323, h: 350, type: 'text',
+                 fontSize: TYPE.BODY_XS, fontWeight: 400, color: null,
+                 align: ALIGN.LEFT, maxChars: MAX.BODY_NARROW },
+    },
+    background: { type: 'solid' },
+    fallback: { ifImages0: 'LAYOUT_11' },
+    scoreWeights: { isImageImportant: 3, shortText: 2, isContent: 1 },
+    distinctiveIdentity: '65/35 golden-ratio vertical split',
+  },
+
+  // ── 05 Floating Card Overlay ──────────────────────────────────────────────
+  LAYOUT_05: {
+    id: 'LAYOUT_05',
+    name: 'Floating Card Overlay',
+    bestFor: ['content', 'quote'],
+    imageCount: { min: 1, max: 1 },
+    contentStructure: ['paragraph', 'quote', 'mixed'],
+    textAmount: ['short', 'medium'],
+    layers: [
+      { zone: 'image_1', zIndex: 1 },
+      { zone: 'card_bg', zIndex: 2 },
+      { zone: 'title',   zIndex: 3 },
+      { zone: 'body',    zIndex: 3 },
+    ],
+    zones: {
+      image_1: { x:   0, y:   0, w: 1333, h: 750, type: 'image',
+                 crop: CROP.COVER, position: POS.CENTER,
+                 borderRadius: 0, overlay: OVERLAY.NONE },
+      card_bg: { x: 750, y:  80, w:  503, h: 590, type: 'card',
+                 backgroundColor: '#fff', opacity: 1.0, borderRadius: 0 },
+      title:   { x: 800, y: 140, w:  403, h: 100, type: 'text',
+                 fontSize: TYPE.H6, fontWeight: 700, color: '#111',
+                 align: ALIGN.LEFT, maxChars: MAX.TITLE_STD },
+      body:    { x: 800, y: 260, w:  403, h: 350, type: 'text',
+                 fontSize: TYPE.BODY_MD, fontWeight: 400, color: '#333',
+                 align: ALIGN.LEFT, maxChars: MAX.BODY_HALF },
+    },
+    background: { type: 'image', fallbackColor: '#444' },
+    fallback: { ifImages0: 'LAYOUT_22' },
+    scoreWeights: { isContent: 2, isQuote: 1, shortText: 2, hasImage: 2 },
+    distinctiveIdentity: 'solid floating card obscuring portion of full-bleed image',
+  },
+
+  // ── 06 Top Banner Hero ────────────────────────────────────────────────────
+  LAYOUT_06: {
+    id: 'LAYOUT_06',
+    name: 'Top Banner Hero',
+    bestFor: ['content', 'section'],
+    imageCount: { min: 1, max: 1 },
+    contentStructure: ['paragraph', 'mixed', 'steps'],
+    textAmount: ['medium', 'long'],
+    layers: [
+      { zone: 'image_1',     zIndex: 1 },
+      { zone: 'title',       zIndex: 2 },
+      { zone: 'body_left',   zIndex: 2 },
+      { zone: 'body_right',  zIndex: 2 },
+    ],
+    zones: {
+      image_1:    { x:   0, y:   0, w: 1333, h: 350, type: 'image',
+                    crop: CROP.COVER, position: POS.TOP,
+                    borderRadius: 0, overlay: OVERLAY.NONE },
+      title:      { x:  80, y: 410, w: 1173, h:  80, type: 'text',
+                    fontSize: TYPE.H5, fontWeight: 700, color: null,
+                    align: ALIGN.LEFT, maxChars: MAX.TITLE_STD },
+      body_left:  { x:  80, y: 510, w:  566, h: 180, type: 'text',
+                    fontSize: TYPE.BODY_XS, fontWeight: 400, color: null,
+                    align: ALIGN.LEFT, maxChars: MAX.BODY_COL },
+      body_right: { x: 686, y: 510, w:  567, h: 180, type: 'text',
+                    fontSize: TYPE.BODY_XS, fontWeight: 400, color: null,
+                    align: ALIGN.LEFT, maxChars: MAX.BODY_COL },
+    },
+    background: { type: 'solid' },
+    fallback: { ifImages0: 'LAYOUT_12' },
+    scoreWeights: { isContent: 2, mediumText: 2, longText: 2, hasImage: 1 },
+    distinctiveIdentity: 'horizontal bisection, edge-to-edge image exclusively top half',
+  },
+
+  // ── 07 Bottom Anchor ──────────────────────────────────────────────────────
+  LAYOUT_07: {
+    id: 'LAYOUT_07',
+    name: 'Bottom Anchor',
+    bestFor: ['content'],
+    imageCount: { min: 1, max: 1 },
+    contentStructure: ['paragraph', 'statistics', 'mixed'],
+    textAmount: ['short', 'medium'],
+    layers: [
+      { zone: 'title',   zIndex: 2 },
+      { zone: 'body',    zIndex: 2 },
+      { zone: 'image_1', zIndex: 1 },
+    ],
+    zones: {
+      title:   { x:  80, y:  80, w: 1173, h:  80, type: 'text',
+                 fontSize: TYPE.H5, fontWeight: 700, color: null,
+                 align: ALIGN.LEFT, maxChars: MAX.TITLE_STD },
+      body:    { x:  80, y: 180, w:  800, h: 140, type: 'text',
+                 fontSize: TYPE.BODY_LG, fontWeight: 400, color: null,
+                 align: ALIGN.LEFT, maxChars: MAX.BODY_HALF },
+      image_1: { x:   0, y: 380, w: 1333, h: 370, type: 'image',
+                 crop: CROP.COVER, position: POS.BOTTOM,
+                 borderRadius: 0, overlay: OVERLAY.NONE },
+    },
+    background: { type: 'solid' },
+    fallback: { ifImages0: 'LAYOUT_22' },
+    scoreWeights: { isContent: 2, shortText: 2, hasImage: 2 },
+    distinctiveIdentity: 'edge-to-edge image acting exclusively as the floor',
+  },
+
+  // ── 08 Triple Column Gallery ──────────────────────────────────────────────
+  LAYOUT_08: {
+    id: 'LAYOUT_08',
+    name: 'The Triple Column Gallery',
+    bestFor: ['content'],
+    imageCount: { min: 3, max: 3 },
+    contentStructure: ['gallery', 'steps', 'bullets'],
+    textAmount: ['short', 'medium'],
+    layers: [
+      { zone: 'title_main', zIndex: 2 },
+      { zone: 'image_1',    zIndex: 1 },
+      { zone: 'title_1',    zIndex: 2 },
+      { zone: 'body_1',     zIndex: 2 },
+      { zone: 'image_2',    zIndex: 1 },
+      { zone: 'title_2',    zIndex: 2 },
+      { zone: 'body_2',     zIndex: 2 },
+      { zone: 'image_3',    zIndex: 1 },
+      { zone: 'title_3',    zIndex: 2 },
+      { zone: 'body_3',     zIndex: 2 },
+    ],
+    zones: {
+      title_main: { x:  80, y:  60, w: 1173, h: 80, type: 'text',
+                    fontSize: TYPE.H5, fontWeight: 700, color: null,
+                    align: ALIGN.LEFT, maxChars: MAX.TITLE_STD },
+      image_1:    { x:  80, y: 180, w:  364, h: 250, type: 'image',
+                    crop: CROP.COVER, position: POS.CENTER,
+                    borderRadius: 12, overlay: OVERLAY.NONE },
+      title_1:    { x:  80, y: 460, w:  364, h:  50, type: 'text',
+                    fontSize: TYPE.BODY_MD, fontWeight: 700, color: null,
+                    align: ALIGN.LEFT, maxChars: MAX.TITLE_SMALL },
+      body_1:     { x:  80, y: 520, w:  364, h: 150, type: 'text',
+                    fontSize: TYPE.CAPTION, fontWeight: 400, color: null,
+                    align: ALIGN.LEFT, maxChars: MAX.BODY_COL },
+      image_2:    { x: 484, y: 180, w:  364, h: 250, type: 'image',
+                    crop: CROP.COVER, position: POS.CENTER,
+                    borderRadius: 12, overlay: OVERLAY.NONE },
+      title_2:    { x: 484, y: 460, w:  364, h:  50, type: 'text',
+                    fontSize: TYPE.BODY_MD, fontWeight: 700, color: null,
+                    align: ALIGN.LEFT, maxChars: MAX.TITLE_SMALL },
+      body_2:     { x: 484, y: 520, w:  364, h: 150, type: 'text',
+                    fontSize: TYPE.CAPTION, fontWeight: 400, color: null,
+                    align: ALIGN.LEFT, maxChars: MAX.BODY_COL },
+      image_3:    { x: 888, y: 180, w:  365, h: 250, type: 'image',
+                    crop: CROP.COVER, position: POS.CENTER,
+                    borderRadius: 12, overlay: OVERLAY.NONE },
+      title_3:    { x: 888, y: 460, w:  365, h:  50, type: 'text',
+                    fontSize: TYPE.BODY_MD, fontWeight: 700, color: null,
+                    align: ALIGN.LEFT, maxChars: MAX.TITLE_SMALL },
+      body_3:     { x: 888, y: 520, w:  365, h: 150, type: 'text',
+                    fontSize: TYPE.CAPTION, fontWeight: 400, color: null,
+                    align: ALIGN.LEFT, maxChars: MAX.BODY_COL },
+    },
+    background: { type: 'solid' },
+    fallback: { ifImages2: 'LAYOUT_17', ifImages1: 'LAYOUT_02', ifImages0: 'LAYOUT_12' },
+    scoreWeights: { isGallery: 3, isSteps: 2, shortText: 1, images3: 3 },
+    distinctiveIdentity: 'symmetrical three-column vertical grid, image-top text-bottom',
+  },
+
+  // ── 09 Centered Hero ──────────────────────────────────────────────────────
+  LAYOUT_09: {
+    id: 'LAYOUT_09',
+    name: 'Centered Hero',
+    bestFor: ['content', 'title'],
+    imageCount: { min: 1, max: 1 },
+    contentStructure: ['paragraph', 'mixed'],
+    textAmount: ['short'],
+    layers: [
+      { zone: 'title',    zIndex: 2 },
+      { zone: 'image_1',  zIndex: 1 },
+      { zone: 'subtitle', zIndex: 2 },
+    ],
+    zones: {
+      title:    { x: 266, y:  60, w: 801, h:  80, type: 'text',
+                  fontSize: TYPE.H6, fontWeight: 700, color: null,
+                  align: ALIGN.CENTER, maxChars: MAX.TITLE_STD },
+      image_1:  { x: 266, y: 160, w: 801, h: 400, type: 'image',
+                  crop: CROP.COVER, position: POS.CENTER,
+                  borderRadius: 16, overlay: OVERLAY.NONE },
+      subtitle: { x: 266, y: 590, w: 801, h: 100, type: 'text',
+                  fontSize: TYPE.BODY_MD, fontWeight: 400, color: null,
+                  align: ALIGN.CENTER, maxChars: MAX.CAPTION },
+    },
+    background: { type: 'solid' },
+    fallback: { ifImages0: 'LAYOUT_09_NO_IMG' },
+    scoreWeights: { shortText: 3, isContent: 1, hasImage: 2 },
+    distinctiveIdentity: 'island-style central image floating mid-canvas, text halo',
+  },
+
+  // ── 10 Minimalist Statement ───────────────────────────────────────────────
+  LAYOUT_10: {
+    id: 'LAYOUT_10',
+    name: 'Minimalist Statement',
+    bestFor: ['title', 'section', 'end'],
+    imageCount: { min: 0, max: 0 },
+    contentStructure: ['paragraph', 'quote', 'mixed'],
+    textAmount: ['short'],
+    layers: [
+      { zone: 'title',    zIndex: 2 },
+      { zone: 'subtitle', zIndex: 2 },
+    ],
+    zones: {
+      title:    { x: 166, y: 250, w: 1001, h: 200, type: 'text',
+                  fontSize: TYPE.H1, fontWeight: 700, color: null,
+                  align: ALIGN.CENTER, maxChars: MAX.TITLE_HERO },
+      subtitle: { x: 166, y: 480, w: 1001, h:  80, type: 'text',
+                  fontSize: TYPE.BODY_LG, fontWeight: 400, color: null,
+                  align: ALIGN.CENTER, maxChars: MAX.SUBTITLE },
+    },
+    background: { type: 'solid' },
+    fallback: {},
+    scoreWeights: { shortText: 3, isTitle: 2, isEnd: 2, images0: 2 },
+    distinctiveIdentity: 'pure text-only, massive centered typography, <40% canvas height used',
+  },
+
+  // ── 11 Large Statistic Focus ──────────────────────────────────────────────
+  LAYOUT_11: {
+    id: 'LAYOUT_11',
+    name: 'Large Statistic Focus',
+    bestFor: ['data', 'content'],
+    imageCount: { min: 0, max: 0 },
+    contentStructure: ['statistics'],
+    textAmount: ['short', 'medium'],
+    layers: [
+      { zone: 'statistic', zIndex: 2 },
+      { zone: 'label',     zIndex: 2 },
+      { zone: 'title',     zIndex: 2 },
+      { zone: 'body',      zIndex: 2 },
+    ],
+    zones: {
+      statistic: { x:  80, y: 250, w: 500, h: 200, type: 'text',
+                   fontSize: TYPE.STAT, fontWeight: 800, color: null,
+                   align: ALIGN.LEFT, maxChars: MAX.STAT },
+      label:     { x:  80, y: 450, w: 500, h:  50, type: 'text',
+                   fontSize: TYPE.BODY_XS, fontWeight: 700, color: null,
+                   align: ALIGN.LEFT, maxChars: MAX.LABEL },
+      title:     { x: 630, y: 250, w: 623, h:  80, type: 'text',
+                   fontSize: TYPE.H7, fontWeight: 700, color: null,
+                   align: ALIGN.LEFT, maxChars: MAX.TITLE_STD },
+      body:      { x: 630, y: 350, w: 623, h: 200, type: 'text',
+                   fontSize: TYPE.BODY_MD, fontWeight: 400, color: null,
+                   align: ALIGN.LEFT, maxChars: MAX.BODY_HALF },
+    },
+    background: { type: 'solid' },
+    fallback: {},
+    scoreWeights: { isData: 3, isStatistic: 3, images0: 2, shortText: 1 },
+    distinctiveIdentity: 'dedicated zone for hyper-scaled numeric typography',
+  },
+
+  // ── 12 Direct Comparison (VS) ─────────────────────────────────────────────
+  LAYOUT_12: {
+    id: 'LAYOUT_12',
+    name: 'Direct Comparison (VS)',
+    bestFor: ['comparison', 'content'],
+    imageCount: { min: 0, max: 0 },
+    contentStructure: ['comparison', 'bullets'],
+    textAmount: ['medium', 'long'],
+    layers: [
+      { zone: 'title_main',  zIndex: 2 },
+      { zone: 'title_left',  zIndex: 2 },
+      { zone: 'body_left',   zIndex: 2 },
+      { zone: 'title_right', zIndex: 2 },
+      { zone: 'body_right',  zIndex: 2 },
+    ],
+    zones: {
+      title_main:  { x:  80, y:  60, w: 1173, h:  80, type: 'text',
+                     fontSize: TYPE.H5, fontWeight: 700, color: null,
+                     align: ALIGN.LEFT, maxChars: MAX.TITLE_STD },
+      title_left:  { x:  80, y: 200, w:  546, h:  60, type: 'text',
+                     fontSize: TYPE.H7, fontWeight: 700, color: null,
+                     align: ALIGN.LEFT, maxChars: MAX.TITLE_SMALL },
+      body_left:   { x:  80, y: 280, w:  546, h: 350, type: 'text',
+                     fontSize: TYPE.BODY_SM, fontWeight: 400, color: null,
+                     align: ALIGN.LEFT, maxChars: MAX.BODY_HALF },
+      title_right: { x: 706, y: 200, w:  547, h:  60, type: 'text',
+                     fontSize: TYPE.H7, fontWeight: 700, color: null,
+                     align: ALIGN.LEFT, maxChars: MAX.TITLE_SMALL },
+      body_right:  { x: 706, y: 280, w:  547, h: 350, type: 'text',
+                     fontSize: TYPE.BODY_SM, fontWeight: 400, color: null,
+                     align: ALIGN.LEFT, maxChars: MAX.BODY_HALF },
+    },
+    background: { type: 'solid' },
+    fallback: {},
+    scoreWeights: { isComparison: 4, images0: 2, mediumText: 1, longText: 1 },
+    distinctiveIdentity: 'symmetrical text-only mirroring across exact center axis',
+  },
+
+  // ── 13 The 4-Card Grid ────────────────────────────────────────────────────
+  LAYOUT_13: {
+    id: 'LAYOUT_13',
+    name: 'The 4-Card Grid',
+    bestFor: ['content'],
+    imageCount: { min: 4, max: 4 },
+    contentStructure: ['gallery', 'bullets', 'mixed'],
+    textAmount: ['short'],
+    layers: [
+      { zone: 'title',   zIndex: 2 },
+      { zone: 'image_1', zIndex: 1 }, { zone: 'body_1', zIndex: 2 },
+      { zone: 'image_2', zIndex: 1 }, { zone: 'body_2', zIndex: 2 },
+      { zone: 'image_3', zIndex: 1 }, { zone: 'body_3', zIndex: 2 },
+      { zone: 'image_4', zIndex: 1 }, { zone: 'body_4', zIndex: 2 },
+    ],
+    zones: {
+      title:   { x:  80, y:  50, w: 1173, h:  70, type: 'text',
+                 fontSize: TYPE.H6, fontWeight: 700, color: null,
+                 align: ALIGN.LEFT, maxChars: MAX.TITLE_STD },
+      image_1: { x:  80, y: 150, w: 260, h: 160, type: 'image',
+                 crop: CROP.COVER, position: POS.CENTER,
+                 borderRadius: 8, overlay: OVERLAY.NONE },
+      body_1:  { x: 360, y: 150, w: 300, h: 160, type: 'text',
+                 fontSize: TYPE.CAPTION, fontWeight: 400, color: null,
+                 align: ALIGN.LEFT, maxChars: MAX.BODY_COL },
+      image_2: { x: 700, y: 150, w: 260, h: 160, type: 'image',
+                 crop: CROP.COVER, position: POS.CENTER,
+                 borderRadius: 8, overlay: OVERLAY.NONE },
+      body_2:  { x: 980, y: 150, w: 273, h: 160, type: 'text',
+                 fontSize: TYPE.CAPTION, fontWeight: 400, color: null,
+                 align: ALIGN.LEFT, maxChars: MAX.BODY_COL },
+      image_3: { x:  80, y: 380, w: 260, h: 160, type: 'image',
+                 crop: CROP.COVER, position: POS.CENTER,
+                 borderRadius: 8, overlay: OVERLAY.NONE },
+      body_3:  { x: 360, y: 380, w: 300, h: 160, type: 'text',
+                 fontSize: TYPE.CAPTION, fontWeight: 400, color: null,
+                 align: ALIGN.LEFT, maxChars: MAX.BODY_COL },
+      image_4: { x: 700, y: 380, w: 260, h: 160, type: 'image',
+                 crop: CROP.COVER, position: POS.CENTER,
+                 borderRadius: 8, overlay: OVERLAY.NONE },
+      body_4:  { x: 980, y: 380, w: 273, h: 160, type: 'text',
+                 fontSize: TYPE.CAPTION, fontWeight: 400, color: null,
+                 align: ALIGN.LEFT, maxChars: MAX.BODY_COL },
+    },
+    background: { type: 'solid' },
+    fallback: { ifImages3: 'LAYOUT_08', ifImages2: 'LAYOUT_17',
+                ifImages1: 'LAYOUT_02', ifImages0: 'LAYOUT_12' },
+    scoreWeights: { isGallery: 3, images4: 4, shortText: 1 },
+    distinctiveIdentity: 'repeating 2x2 interlocking pattern of images and text blocks',
+  },
+
+  // ── 14 Sidebar Navigation ─────────────────────────────────────────────────
+  LAYOUT_14: {
+    id: 'LAYOUT_14',
+    name: 'Sidebar Navigation',
+    bestFor: ['content', 'section'],
+    imageCount: { min: 1, max: 1 },
+    contentStructure: ['bullets', 'steps', 'mixed'],
+    textAmount: ['medium', 'long'],
+    layers: [
+      { zone: 'sidebar_bg', zIndex: 1 },
+      { zone: 'label_1',    zIndex: 2 },
+      { zone: 'label_2',    zIndex: 2 },
+      { zone: 'label_3',    zIndex: 2 },
+      { zone: 'title',      zIndex: 2 },
+      { zone: 'body',       zIndex: 2 },
+      { zone: 'image_1',    zIndex: 1 },
+    ],
+    zones: {
+      sidebar_bg: { x:   0, y:   0, w: 350, h: 750, type: 'card',
+                    backgroundColor: null, opacity: 1.0, borderRadius: 0 },
+      label_1:    { x:  40, y: 100, w: 270, h:  40, type: 'text',
+                    fontSize: TYPE.CAPTION, fontWeight: 700, color: null,
+                    align: ALIGN.LEFT, maxChars: MAX.SIDEBAR_LABEL,
+                    textTransform: 'uppercase' },
+      label_2:    { x:  40, y: 160, w: 270, h:  40, type: 'text',
+                    fontSize: TYPE.CAPTION, fontWeight: 700, color: null,
+                    align: ALIGN.LEFT, maxChars: MAX.SIDEBAR_LABEL,
+                    textTransform: 'uppercase' },
+      label_3:    { x:  40, y: 220, w: 270, h:  40, type: 'text',
+                    fontSize: TYPE.CAPTION, fontWeight: 700, color: null,
+                    align: ALIGN.LEFT, maxChars: MAX.SIDEBAR_LABEL,
+                    textTransform: 'uppercase' },
+      title:      { x: 430, y: 100, w: 823, h: 100, type: 'text',
+                    fontSize: TYPE.H5, fontWeight: 700, color: null,
+                    align: ALIGN.LEFT, maxChars: MAX.TITLE_STD },
+      body:       { x: 430, y: 220, w: 823, h: 180, type: 'text',
+                    fontSize: TYPE.BODY_SM, fontWeight: 400, color: null,
+                    align: ALIGN.LEFT, maxChars: MAX.BODY_HALF },
+      image_1:    { x: 430, y: 440, w: 823, h: 250, type: 'image',
+                    crop: CROP.COVER, position: POS.CENTER,
+                    borderRadius: 12, overlay: OVERLAY.NONE },
+    },
+    background: { type: 'solid' },
+    fallback: { ifImages0: 'LAYOUT_14_NO_IMG' },
+    scoreWeights: { isContent: 2, mediumText: 2, longText: 2, hasImage: 1 },
+    distinctiveIdentity: 'hard vertical rule isolating thin column for metadata/labels',
+  },
+
+  // ── 15 Editorial Wrap ─────────────────────────────────────────────────────
+  LAYOUT_15: {
+    id: 'LAYOUT_15',
+    name: 'Editorial Wrap',
+    bestFor: ['content'],
+    imageCount: { min: 1, max: 1 },
+    contentStructure: ['paragraph', 'mixed'],
+    textAmount: ['long'],
+    layers: [
+      { zone: 'title',      zIndex: 2 },
+      { zone: 'image_1',    zIndex: 1 },
+      { zone: 'body_left',  zIndex: 2 },
+      { zone: 'body_right', zIndex: 2 },
+    ],
+    zones: {
+      title:      { x:  80, y:  80, w: 600, h: 200, type: 'text',
+                    fontSize: TYPE.H3, fontWeight: 700, color: null,
+                    align: ALIGN.LEFT, maxChars: MAX.TITLE_HERO },
+      image_1:    { x: 746, y:  80, w: 507, h: 350, type: 'image',
+                    crop: CROP.COVER, position: POS.CENTER,
+                    borderRadius: 0, overlay: OVERLAY.NONE },
+      body_left:  { x:  80, y: 470, w: 566, h: 200, type: 'text',
+                    fontSize: TYPE.BODY_XS, fontWeight: 400, color: null,
+                    align: ALIGN.LEFT, maxChars: MAX.BODY_COL },
+      body_right: { x: 686, y: 470, w: 567, h: 200, type: 'text',
+                    fontSize: TYPE.BODY_XS, fontWeight: 400, color: null,
+                    align: ALIGN.LEFT, maxChars: MAX.BODY_COL },
+    },
+    background: { type: 'solid' },
+    fallback: { ifImages0: 'LAYOUT_22' },
+    scoreWeights: { isContent: 2, longText: 3, hasImage: 1 },
+    distinctiveIdentity: 'L-shaped text wrapping around single corner-pinned image',
+  },
+
+  // ── 16 Staggered Diagonal ─────────────────────────────────────────────────
+  LAYOUT_16: {
+    id: 'LAYOUT_16',
+    name: 'The Staggered Diagonal',
+    bestFor: ['content', 'section'],
+    imageCount: { min: 3, max: 3 },
+    contentStructure: ['steps', 'gallery'],
+    textAmount: ['short'],
+    layers: [
+      { zone: 'image_1', zIndex: 1 }, { zone: 'body_1', zIndex: 2 },
+      { zone: 'image_2', zIndex: 1 }, { zone: 'body_2', zIndex: 2 },
+      { zone: 'image_3', zIndex: 1 }, { zone: 'body_3', zIndex: 2 },
+    ],
+    zones: {
+      image_1: { x:  80, y:  80, w: 300, h: 200, type: 'image',
+                 crop: CROP.COVER, position: POS.CENTER,
+                 borderRadius: 16, overlay: OVERLAY.NONE },
+      body_1:  { x:  80, y: 300, w: 300, h: 100, type: 'text',
+                 fontSize: TYPE.BODY_XS, fontWeight: 400, color: null,
+                 align: ALIGN.LEFT, maxChars: MAX.BODY_COL },
+      image_2: { x: 430, y: 220, w: 300, h: 200, type: 'image',
+                 crop: CROP.COVER, position: POS.CENTER,
+                 borderRadius: 16, overlay: OVERLAY.NONE },
+      body_2:  { x: 430, y: 440, w: 300, h: 100, type: 'text',
+                 fontSize: TYPE.BODY_XS, fontWeight: 400, color: null,
+                 align: ALIGN.LEFT, maxChars: MAX.BODY_COL },
+      image_3: { x: 780, y: 360, w: 300, h: 200, type: 'image',
+                 crop: CROP.COVER, position: POS.CENTER,
+                 borderRadius: 16, overlay: OVERLAY.NONE },
+      body_3:  { x: 780, y: 580, w: 300, h: 100, type: 'text',
+                 fontSize: TYPE.BODY_XS, fontWeight: 400, color: null,
+                 align: ALIGN.LEFT, maxChars: MAX.BODY_COL },
+    },
+    background: { type: 'solid' },
+    fallback: { ifImages2: 'LAYOUT_17', ifImages1: 'LAYOUT_02', ifImages0: 'LAYOUT_12' },
+    scoreWeights: { isSteps: 3, isGallery: 2, images3: 3, shortText: 2 },
+    distinctiveIdentity: 'descending diagonal cascade of identical visual blocks',
+  },
+
+  // ── 17 Two-Image Overlap ──────────────────────────────────────────────────
+  LAYOUT_17: {
+    id: 'LAYOUT_17',
+    name: 'Two-Image Overlap',
+    bestFor: ['content', 'comparison'],
+    imageCount: { min: 2, max: 2 },
+    contentStructure: ['paragraph', 'comparison', 'mixed'],
+    textAmount: ['short', 'medium'],
+    layers: [
+      { zone: 'image_1', zIndex: 1 },
+      { zone: 'image_2', zIndex: 2 },
+      { zone: 'title',   zIndex: 3 },
+      { zone: 'body',    zIndex: 3 },
+    ],
+    zones: {
+      image_1: { x:  80, y: 150, w: 450, h: 500, type: 'image',
+                 crop: CROP.COVER, position: POS.CENTER,
+                 borderRadius: 0, overlay: OVERLAY.NONE,
+                 dropShadow: true },
+      image_2: { x: 350, y:  80, w: 400, h: 400, type: 'image',
+                 crop: CROP.COVER, position: POS.CENTER,
+                 borderRadius: 0, overlay: OVERLAY.NONE },
+      title:   { x: 820, y: 250, w: 433, h: 100, type: 'text',
+                 fontSize: TYPE.H5, fontWeight: 700, color: null,
+                 align: ALIGN.LEFT, maxChars: MAX.TITLE_SMALL },
+      body:    { x: 820, y: 380, w: 433, h: 200, type: 'text',
+                 fontSize: TYPE.BODY_SM, fontWeight: 400, color: null,
+                 align: ALIGN.LEFT, maxChars: MAX.BODY_NARROW },
+    },
+    background: { type: 'solid' },
+    fallback: { ifImages1: 'LAYOUT_02', ifImages0: 'LAYOUT_22' },
+    scoreWeights: { isComparison: 2, images2: 3, shortText: 2 },
+    distinctiveIdentity: 'z-index layering where two primary images physically overlap',
+  },
+
+  // ── 18 Horizontal Filmstrip ───────────────────────────────────────────────
+  LAYOUT_18: {
+    id: 'LAYOUT_18',
+    name: 'Horizontal Filmstrip',
+    bestFor: ['content'],
+    imageCount: { min: 3, max: 3 },
+    contentStructure: ['gallery', 'steps', 'mixed'],
+    textAmount: ['short'],
+    layers: [
+      { zone: 'title',    zIndex: 2 },
+      { zone: 'image_1',  zIndex: 1 },
+      { zone: 'image_2',  zIndex: 1 },
+      { zone: 'image_3',  zIndex: 1 },
+      { zone: 'subtitle', zIndex: 2 },
+    ],
+    zones: {
+      title:    { x:  80, y:  50, w: 1173, h:  80, type: 'text',
+                  fontSize: TYPE.H7, fontWeight: 700, color: null,
+                  align: ALIGN.CENTER, maxChars: MAX.TITLE_STD },
+      image_1:  { x:   0, y: 200, w:  444, h: 300, type: 'image',
+                  crop: CROP.COVER, position: POS.CENTER,
+                  borderRadius: 0, overlay: OVERLAY.NONE },
+      image_2:  { x: 444, y: 200, w:  445, h: 300, type: 'image',
+                  crop: CROP.COVER, position: POS.CENTER,
+                  borderRadius: 0, overlay: OVERLAY.NONE },
+      image_3:  { x: 889, y: 200, w:  444, h: 300, type: 'image',
+                  crop: CROP.COVER, position: POS.CENTER,
+                  borderRadius: 0, overlay: OVERLAY.NONE },
+      subtitle: { x:  80, y: 550, w: 1173, h: 100, type: 'text',
+                  fontSize: TYPE.BODY_MD, fontWeight: 400, color: null,
+                  align: ALIGN.CENTER, maxChars: MAX.CAPTION },
+    },
+    background: { type: 'solid' },
+    fallback: { ifImages2: 'LAYOUT_17', ifImages1: 'LAYOUT_07', ifImages0: 'LAYOUT_10' },
+    scoreWeights: { isGallery: 3, images3: 3, shortText: 2 },
+    distinctiveIdentity: 'seamless edge-to-edge horizontal image carousel bisecting Y-axis',
+  },
+
+  // ── 19 The Quotation ──────────────────────────────────────────────────────
+  LAYOUT_19: {
+    id: 'LAYOUT_19',
+    name: 'The Quotation',
+    bestFor: ['quote'],
+    imageCount: { min: 1, max: 1 },
+    contentStructure: ['quote'],
+    textAmount: ['medium'],
+    layers: [
+      { zone: 'quote_icon_zone', zIndex: 2 },
+      { zone: 'image_1',         zIndex: 1 },
+      { zone: 'quote_text',      zIndex: 2 },
+      { zone: 'attribution',     zIndex: 2 },
+    ],
+    zones: {
+      quote_icon_zone: { x:  80, y: 100, w: 150, h: 150, type: 'decorator',
+                         decoration: 'quotemark', fontSize: 200, color: null },
+      quote_text:      { x:  80, y: 280, w: 600, h: 300, type: 'text',
+                         fontSize: TYPE.H7, fontWeight: 400, fontStyle: 'italic', color: null,
+                         align: ALIGN.LEFT, maxChars: MAX.QUOTE },
+      attribution:     { x:  80, y: 600, w: 600, h:  50, type: 'text',
+                         fontSize: TYPE.BODY_SM, fontWeight: 700, color: null,
+                         align: ALIGN.LEFT, maxChars: MAX.ATTRIBUTION },
+      image_1:         { x: 800, y: 100, w: 453, h: 550, type: 'image',
+                         crop: CROP.COVER, position: POS.CENTER,
+                         borderRadius: 1000, overlay: OVERLAY.NONE },
+    },
+    background: { type: 'solid' },
+    fallback: { ifImages0: 'LAYOUT_10' },
+    scoreWeights: { isQuote: 4, images1: 2, mediumText: 1 },
+    distinctiveIdentity: 'large-scale italic text block paired with circular/pill portrait',
+  },
+
+  // ── 20 Data Dashboard ─────────────────────────────────────────────────────
+  LAYOUT_20: {
+    id: 'LAYOUT_20',
+    name: 'Data Dashboard',
+    bestFor: ['data'],
+    imageCount: { min: 1, max: 1 }, // image_1 used as chart zone placeholder
+    contentStructure: ['statistics', 'mixed'],
+    textAmount: ['short', 'medium'],
+    layers: [
+      { zone: 'title',   zIndex: 2 },
+      { zone: 'image_1', zIndex: 1 }, // chart placeholder
+      { zone: 'stat_1',  zIndex: 2 },
+      { zone: 'stat_2',  zIndex: 2 },
+      { zone: 'body',    zIndex: 2 },
+    ],
+    zones: {
+      title:   { x:  80, y:  50, w: 1173, h:  60, type: 'text',
+                 fontSize: TYPE.H6, fontWeight: 700, color: null,
+                 align: ALIGN.LEFT, maxChars: MAX.TITLE_STD },
+      image_1: { x:  80, y: 150, w:  800, h: 520, type: 'image',
+                 crop: CROP.CONTAIN, position: POS.CENTER,
+                 borderRadius: 0, overlay: OVERLAY.NONE,
+                 note: 'Chart/graph placeholder — renderer inserts chart SVG here' },
+      stat_1:  { x: 930, y: 150, w:  323, h: 120, type: 'text',
+                 fontSize: TYPE.H5, fontWeight: 800, color: null,
+                 align: ALIGN.LEFT, maxChars: MAX.STAT },
+      stat_2:  { x: 930, y: 300, w:  323, h: 120, type: 'text',
+                 fontSize: TYPE.H5, fontWeight: 800, color: null,
+                 align: ALIGN.LEFT, maxChars: MAX.STAT },
+      body:    { x: 930, y: 450, w:  323, h: 220, type: 'text',
+                 fontSize: TYPE.CAPTION, fontWeight: 400, color: null,
+                 align: ALIGN.LEFT, maxChars: MAX.BODY_NARROW },
+    },
+    background: { type: 'solid' },
+    fallback: { ifImages0: 'LAYOUT_11' },
+    scoreWeights: { isData: 4, isStatistic: 2, shortText: 1 },
+    distinctiveIdentity: 'massive square zone left dominating with chart/numerical data',
+  },
+
+  // ── 21 Dynamic Masonry ────────────────────────────────────────────────────
+  LAYOUT_21: {
+    id: 'LAYOUT_21',
+    name: 'Dynamic Masonry',
+    bestFor: ['content'],
+    imageCount: { min: 3, max: 3 },
+    contentStructure: ['gallery', 'paragraph', 'mixed'],
+    textAmount: ['short', 'medium'],
+    layers: [
+      { zone: 'title',   zIndex: 2 },
+      { zone: 'body',    zIndex: 2 },
+      { zone: 'image_1', zIndex: 1 },
+      { zone: 'image_2', zIndex: 1 },
+      { zone: 'image_3', zIndex: 1 },
+    ],
+    zones: {
+      title:   { x:  80, y: 150, w:  400, h: 150, type: 'text',
+                 fontSize: TYPE.H3, fontWeight: 700, color: null,
+                 align: ALIGN.LEFT, maxChars: MAX.TITLE_STD },
+      body:    { x:  80, y: 320, w:  400, h: 300, type: 'text',
+                 fontSize: TYPE.BODY_XS, fontWeight: 400, color: null,
+                 align: ALIGN.LEFT, maxChars: MAX.BODY_HALF },
+      image_1: { x: 550, y:  80, w:  450, h: 590, type: 'image',
+                 crop: CROP.COVER, position: POS.CENTER,
+                 borderRadius: 8, overlay: OVERLAY.NONE },
+      image_2: { x:1020, y:  80, w:  233, h: 285, type: 'image',
+                 crop: CROP.COVER, position: POS.CENTER,
+                 borderRadius: 8, overlay: OVERLAY.NONE },
+      image_3: { x:1020, y: 385, w:  233, h: 285, type: 'image',
+                 crop: CROP.COVER, position: POS.CENTER,
+                 borderRadius: 8, overlay: OVERLAY.NONE },
+    },
+    background: { type: 'solid' },
+    fallback: { ifImages2: 'LAYOUT_17', ifImages1: 'LAYOUT_04', ifImages0: 'LAYOUT_22' },
+    scoreWeights: { isGallery: 3, images3: 3, shortText: 1, mediumText: 1 },
+    distinctiveIdentity: 'asymmetrical multi-sized image grid acting as unified visual cluster',
+  },
+
+  // ── 22 Executive Summary (Wide Text) ─────────────────────────────────────
+  LAYOUT_22: {
+    id: 'LAYOUT_22',
+    name: 'Executive Summary (Wide Text)',
+    bestFor: ['content', 'end'],
+    imageCount: { min: 0, max: 0 },
+    contentStructure: ['paragraph', 'bullets', 'mixed'],
+    textAmount: ['long'],
+    layers: [
+      { zone: 'title',    zIndex: 2 },
+      { zone: 'subtitle', zIndex: 2 },
+      { zone: 'body',     zIndex: 2 },
+    ],
+    zones: {
+      title:    { x: 200, y: 100, w: 933, h:  80, type: 'text',
+                  fontSize: TYPE.H6, fontWeight: 700, color: null,
+                  align: ALIGN.LEFT, maxChars: MAX.TITLE_STD },
+      subtitle: { x: 200, y: 190, w: 933, h:  60, type: 'text',
+                  fontSize: TYPE.BODY_LG, fontWeight: 400, color: null,
+                  align: ALIGN.LEFT, maxChars: MAX.SUBTITLE },
+      body:     { x: 200, y: 280, w: 933, h: 400, type: 'text',
+                  fontSize: TYPE.BODY_XS, fontWeight: 400, lineHeight: 1.5, color: null,
+                  align: ALIGN.LEFT, maxChars: MAX.BODY_FULL },
+    },
+    background: { type: 'solid' },
+    fallback: {},
+    scoreWeights: { images0: 2, longText: 3, isEnd: 1 },
+    distinctiveIdentity: 'ultra-wide single-column text framed by 200px lateral margins',
+  },
+
+  // ── 23 The Right-Hand Grid ─────────────────────────────────────────────────
+  LAYOUT_23: {
+    id: 'LAYOUT_23',
+    name: 'The Right-Hand Grid',
+    bestFor: ['content'],
+    imageCount: { min: 4, max: 4 },
+    contentStructure: ['bullets', 'paragraph', 'mixed'],
+    textAmount: ['medium'],
+    layers: [
+      { zone: 'title',   zIndex: 2 },
+      { zone: 'body',    zIndex: 2 },
+      { zone: 'image_1', zIndex: 1 },
+      { zone: 'image_2', zIndex: 1 },
+      { zone: 'image_3', zIndex: 1 },
+      { zone: 'image_4', zIndex: 1 },
+    ],
+    zones: {
+      title:   { x:  80, y: 200, w: 450, h: 120, type: 'text',
+                 fontSize: TYPE.H4, fontWeight: 700, color: null,
+                 align: ALIGN.LEFT, maxChars: MAX.TITLE_STD },
+      body:    { x:  80, y: 350, w: 450, h: 250, type: 'text',
+                 fontSize: TYPE.BODY_SM, fontWeight: 400, color: null,
+                 align: ALIGN.LEFT, maxChars: MAX.BODY_HALF },
+      image_1: { x: 650, y: 100, w: 270, h: 270, type: 'image',
+                 crop: CROP.COVER, position: POS.CENTER,
+                 borderRadius: 4, overlay: OVERLAY.NONE },
+      image_2: { x: 950, y: 100, w: 270, h: 270, type: 'image',
+                 crop: CROP.COVER, position: POS.CENTER,
+                 borderRadius: 4, overlay: OVERLAY.NONE },
+      image_3: { x: 650, y: 400, w: 270, h: 270, type: 'image',
+                 crop: CROP.COVER, position: POS.CENTER,
+                 borderRadius: 4, overlay: OVERLAY.NONE },
+      image_4: { x: 950, y: 400, w: 270, h: 270, type: 'image',
+                 crop: CROP.COVER, position: POS.CENTER,
+                 borderRadius: 4, overlay: OVERLAY.NONE },
+    },
+    background: { type: 'solid' },
+    fallback: { ifImages3: 'LAYOUT_08', ifImages2: 'LAYOUT_17',
+                ifImages1: 'LAYOUT_02', ifImages0: 'LAYOUT_12' },
+    scoreWeights: { isContent: 2, images4: 4, mediumText: 2 },
+    distinctiveIdentity: '2x2 pure image grid isolated entirely to right 50% of canvas',
+  },
+
+  // ── 24 Bottom Corner Hero ─────────────────────────────────────────────────
+  LAYOUT_24: {
+    id: 'LAYOUT_24',
+    name: 'Bottom Corner Hero',
+    bestFor: ['end', 'content'],
+    imageCount: { min: 1, max: 1 },
+    contentStructure: ['paragraph', 'mixed'],
+    textAmount: ['short', 'medium'],
+    layers: [
+      { zone: 'title',   zIndex: 2 },
+      { zone: 'body',    zIndex: 2 },
+      { zone: 'image_1', zIndex: 1 },
+    ],
+    zones: {
+      title:   { x:  80, y: 100, w: 600, h: 150, type: 'text',
+                 fontSize: TYPE.H2, fontWeight: 700, color: null,
+                 align: ALIGN.LEFT, maxChars: MAX.TITLE_HERO },
+      body:    { x:  80, y: 270, w: 500, h: 200, type: 'text',
+                 fontSize: TYPE.BODY_MD, fontWeight: 400, color: null,
+                 align: ALIGN.LEFT, maxChars: MAX.BODY_NARROW },
+      image_1: { x: 633, y: 300, w: 700, h: 450, type: 'image',
+                 crop: CROP.COVER, position: POS.CENTER,
+                 borderRadius: 0, overlay: OVERLAY.NONE },
+    },
+    background: { type: 'solid' },
+    fallback: { ifImages0: 'LAYOUT_10' },
+    scoreWeights: { isEnd: 2, shortText: 2, hasImage: 2 },
+    distinctiveIdentity: 'diagonal balance top-left text and bottom-right edge-bleeding image',
+  },
+
+  // ── 25 High Contrast Section Break ───────────────────────────────────────
+  LAYOUT_25: {
+    id: 'LAYOUT_25',
+    name: 'High Contrast Section Break',
+    bestFor: ['section'],
+    imageCount: { min: 1, max: 1 },
+    contentStructure: ['paragraph', 'mixed'],
+    textAmount: ['short'],
+    layers: [
+      { zone: 'image_1', zIndex: 1 },
+      { zone: 'overlay', zIndex: 2 },
+      { zone: 'label',   zIndex: 3 },
+      { zone: 'title',   zIndex: 3 },
+    ],
+    zones: {
+      image_1: { x:   0, y:   0, w: 1333, h: 750, type: 'image',
+                 crop: CROP.COVER, position: POS.CENTER,
+                 borderRadius: 0, overlay: OVERLAY.BLUR_DARK },
+      label:   { x:  80, y: 200, w: 1173, h: 100, type: 'text',
+                 fontSize: TYPE.DISPLAY_MD, fontWeight: 700, color: '#fff',
+                 align: ALIGN.LEFT, maxChars: MAX.LABEL },
+      title:   { x:  80, y: 320, w: 1173, h: 200, type: 'text',
+                 fontSize: TYPE.DISPLAY_LG, fontWeight: 900, color: '#fff',
+                 align: ALIGN.LEFT, maxChars: MAX.TITLE_HERO },
+    },
+    background: { type: 'image', fallbackColor: '#0a0a0a' },
+    fallback: { ifImages0: 'LAYOUT_10' },
+    scoreWeights: { isSection: 4, shortText: 2, hasImage: 1 },
+    distinctiveIdentity: 'full canvas oversized typography with near-blackout background',
+  },
+
+};
+
+// ─── Exports ──────────────────────────────────────────────────────────────────
+
+/**
+ * Return a layout definition by ID.
+ * @param {string} layoutId  e.g. 'LAYOUT_08'
+ * @returns {object} Layout definition (deep-cloned so callers can't mutate the library)
+ */
+function getLayout(layoutId) {
+  const layout = LAYOUTS[layoutId];
+  if (!layout) throw new Error(`Unknown layout: ${layoutId}`);
+  return JSON.parse(JSON.stringify(layout));
+}
+
+/**
+ * Return all layout definitions (cloned).
+ */
+function getAllLayouts() {
+  return Object.fromEntries(
+    Object.entries(LAYOUTS).map(([k, v]) => [k, JSON.parse(JSON.stringify(v))])
+  );
+}
+
+module.exports = { getLayout, getAllLayouts, CANVAS, TYPE, OVERLAY, CROP, POS, ALIGN, MAX };

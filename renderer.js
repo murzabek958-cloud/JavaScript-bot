@@ -29,25 +29,57 @@ async function renderSlide(htmlItem, slideIndex) {
   try {
     await page.setViewport({ width: 1333, height: 750, deviceScaleFactor: 2 });
 
-    // 1) HTML жүктеу — domcontentloaded жеткілікті (base64 network емес)
+    // 1) HTML жүктеу
     await page.setContent(html, { waitUntil: "domcontentloaded", timeout: 30000 });
 
-    // 2) Барлық <img> суреттер толық жүктелгенше күту
+    // 2) CSS background-image толық жүктелгенше күту
+    // (document.images тек <img> тегтерін қарайды, background-image-ді қарамайды)
     await page.evaluate(() => {
-      return Promise.all(
-        Array.from(document.images).map((img) => {
-          if (img.complete) return Promise.resolve();
-          return new Promise((resolve) => {
-            img.addEventListener("load",  resolve);
-            img.addEventListener("error", resolve); // қате болса да өту
-          });
-        })
-      );
+      const elements = Array.from(document.querySelectorAll("*"));
+      const loads = elements.map((el) => {
+        const style = window.getComputedStyle(el);
+        const bg    = style.backgroundImage;
+        if (!bg || bg === "none") return Promise.resolve();
+
+        // url(...) бар ма?
+        const match = bg.match(/url\(["']?(.+?)["']?\)/);
+        if (!match) return Promise.resolve();
+
+        const url = match[1];
+        // base64 болса бірден ready
+        if (url.startsWith("data:")) return Promise.resolve();
+
+        // Сыртқы URL — Image арқылы күтеміз
+        return new Promise((resolve) => {
+          const img = new Image();
+          img.onload  = resolve;
+          img.onerror = resolve;
+          img.src     = url;
+        });
+      });
+      return Promise.all(loads);
     });
 
-    // 3) CSS animations, background-image render үшін қысқа күту
-    await new Promise((r) => setTimeout(r, 150));
+    // 3) Paint cycle аяқталсын деп күту (рендер дайын болу үшін)
+    await new Promise((r) => setTimeout(r, 600));
 
+      console.log(`[renderer-debug] HTML length: ${html.length}`);
+      console.log(`[renderer-debug] body children: ${await page.evaluate(() => document.body.children.length)}`);
+      console.log(`[renderer-debug] slide exists: ${await page.evaluate(() => !!document.querySelector(".slide"))}`);
+      console.log(`[renderer-debug] bg images: ${await page.evaluate(() => document.querySelectorAll(".bg-image").length)}`);
+      console.log(`[renderer-debug] body text length: ${await page.evaluate(() => document.body.innerText.length)}`);
+      console.log(`[renderer-debug] slide=${slideIndex + 1} html=${html.length}`);
+      console.log(`[renderer-debug] slide=${slideIndex + 1} bodyChildren=${await page.evaluate(() => document.body.children.length)}`);
+      console.log(`[renderer-debug] slide=${slideIndex + 1} slideExists=${await page.evaluate(() => !!document.querySelector(".slide"))}`);
+      console.log(`[renderer-debug] slide=${slideIndex + 1} slideSize=${await page.evaluate(() => { const e=document.querySelector(".slide"); if(!e)return "NONE"; const r=e.getBoundingClientRect(); return `${r.width}x${r.height}`; })}`);
+      console.log(`[renderer-debug] slide=${slideIndex + 1} bgImages=${await page.evaluate(() => document.querySelectorAll(".bg-image").length)}`);
+      console.log(`[renderer-debug] slide=${slideIndex + 1} bgStyle=${await page.evaluate(() => document.querySelector(".bg-image")?.style.backgroundImage?.slice(0,80) || "NONE")}`);
+      console.log(`[renderer-debug] slide=${slideIndex + 1} htmlImages=${await page.evaluate(() => document.images.length)}`);
+      console.log(`[renderer-debug] slide=${slideIndex + 1} bodyText=${await page.evaluate(() => document.body.innerText.length)}`);
+      console.log(`[renderer-debug] slide=${slideIndex + 1} bgColor=${await page.evaluate(() => getComputedStyle(document.querySelector(".slide") || document.body).backgroundColor)}`);
+      console.log(`[renderer-debug] slide=${slideIndex + 1} bodyHTML=${await page.evaluate(() => document.body.innerHTML.length)}`);
+      await page.screenshot({ path: `/data/data/com.termux/files/usr/tmp/debug_slide_${slideIndex + 1}.png`, type: "png", clip: { x: 0, y: 0, width: 1333, height: 750 } });
+      console.log(`[renderer-debug] DEBUG PNG saved: /data/data/com.termux/files/usr/tmp/debug_slide_${slideIndex + 1}.png`);
     const imageBuffer = await page.screenshot({
       type: "png",
       clip: { x: 0, y: 0, width: 1333, height: 750 },
